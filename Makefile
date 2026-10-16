@@ -3,6 +3,9 @@
 data-get:
 	go run ./api/cmd/fetchRawData.go
 
+clean:
+	rm -rf data/raw
+
 build-api:
 	go build -o bin/server ./api/cmd/server
 	go build -o bin/builder ./api/cmd/builder
