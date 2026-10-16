@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"maps/api/types"
 )
 
 var DataUrls = []struct {
@@ -61,199 +63,8 @@ func main() {
 
 	fmt.Println("network.bin")
 	saveFile(buildNetWork("data/raw"), "data/processed/network.bin")
-}
-
-type Accessibility uint8
-
-const (
-	AccessibilityUnknown Accessibility = iota
-	AccessibilityYes
-	AccessibilityNo
-)
-
-type RouteType uint8
-
-const (
-	RouteTypeTram RouteType = iota
-	RouteTypeMetro
-	RouteTypeTrain
-	RouteTypeBus
-	RouteTypeFerry
-	RouteTypeCableTram
-	RouteTypeAerialLift
-	RouteTypeFunicular
-)
-
-type TransferType uint8
-
-const (
-	TransferTypeRecommended TransferType = iota
-	TransferTypeTimed
-	TransferTypeNormal
-	TransferTypeNotPossible
-)
-
-type ParentType uint8
-
-const (
-	ParentTypeUnknown ParentType = iota
-	ParentTypeLift
-	ParentTypeMetro
-	ParentTypeStreetBus
-	ParentTypeStreetTram
-	ParentTypeRail
-)
-
-func parseParentType(s string) ParentType {
-	switch s {
-	case "liftStation":
-		return ParentTypeLift
-	case "metroStation":
-		return ParentTypeMetro
-	case "onstreetBus", "busStation":
-		return ParentTypeStreetBus
-	case "onstreetTram", "tramStation":
-		return ParentTypeStreetTram
-	case "railStation":
-		return ParentTypeRail
-	default:
-		if v, err := strconv.ParseUint(s, 10, 8); err == nil {
-			return ParentType(v)
-		}
-		return ParentTypeUnknown
-	}
-}
-
-type TrainPosition uint8
-
-const (
-	TrainPositionUnknown TrainPosition = iota
-	TrainPositionFront
-	TrainPositionMiddle
-	TrainPositionBack
-)
-
-func parseTrainPosition(s string) TrainPosition {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "avant", "front":
-		return TrainPositionFront
-	case "milieu", "middle":
-		return TrainPositionMiddle
-	case "arrière", "arriere", "back":
-		return TrainPositionBack
-	default:
-		if v, err := strconv.ParseUint(s, 10, 8); err == nil {
-			return TrainPosition(v)
-		}
-		return TrainPositionUnknown
-	}
-}
-
-type GTFSTime uint32
-
-func parseGTFSTime(s string) (GTFSTime, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, nil
-	}
-	var h, m, sec uint32
-	var part int
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == ':' {
-			part++
-			if part > 2 {
-				return 0, fmt.Errorf("invalid time format: %s", s)
-			}
-			continue
-		}
-		if c < '0' || c > '9' {
-			return 0, fmt.Errorf("invalid character in time %s: %c", s, c)
-		}
-		digit := uint32(c - '0')
-		switch part {
-		case 0:
-			h = h*10 + digit
-		case 1:
-			m = m*10 + digit
-		case 2:
-			sec = sec*10 + digit
-		}
-	}
-	if part != 2 {
-		return 0, fmt.Errorf("invalid time format: %s", s)
-	}
-	return GTFSTime(h*3600 + m*60 + sec), nil
-}
-
-type Stop struct {
-	SID           string        `csv:"stop_id"`
-	Name          string        `csv:"stop_name"`
-	Long          float64       `csv:"stop_lon"`
-	Lat           float64       `csv:"stop_lat"`
-	ZoneId        string        `csv:"zone_id"`
-	ParentStation string        `csv:"parent_station"`
-	WheelChair    Accessibility `csv:"wheelchair_boarding"`
-}
-
-type Route struct {
-	RID      string    `csv:"route_id"`
-	AgencyID string    `csv:"agency_id"`
-	SName    string    `csv:"route_short_name"`
-	LName    string    `csv:"route_long_name"`
-	RType    RouteType `csv:"route_type"`
-	Color    string    `csv:"route_color"`
-	TColor   string    `csv:"route_text_color"`
-}
-
-type Trip struct {
-	RID          string        `csv:"route_id"`
-	TID          string        `csv:"trip_id"`
-	Headsign     string        `csv:"trip_headsign"`
-	SName        string        `csv:"trip_short_name"`
-	DirID        uint8         `csv:"direction_id"`
-	WheelChair   Accessibility `csv:"wheelchair_accessible"`
-	BikesAllowed Accessibility `csv:"bikes_allowed"`
-}
-
-type StopTime struct {
-	TID   string   `csv:"trip_id"`
-	ATime GTFSTime `csv:"arrival_time"`
-	DTime GTFSTime `csv:"departure_time"`
-	SId   string   `csv:"stop_id"`
-	Seq   uint16   `csv:"stop_sequence"`
-}
-
-type Transfer struct {
-	FromSID  string       `csv:"from_stop_id"`
-	ToSID    string       `csv:"to_stop_id"`
-	TType    TransferType `csv:"transfer_type"`
-	MinTTime uint16       `csv:"min_transfer_time"`
-}
-
-type ParentsStation struct {
-	PID   string     `csv:"zdcid"`
-	Name  string     `csv:"zdcname"`
-	PType ParentType `csv:"zdctype"`
-}
-
-type PositionInTrain struct {
-	FromSID     string        `csv:"from_id"`
-	ToSID       string        `csv:"to_id"`
-	RID         string        `csv:"line_id"`
-	PositionAvg TrainPosition `csv:"position_average"`
-	Pos         uint8         `csv:"position"`
-	Wagons      uint8         `csv:"position_max"`
-}
-
-type Network struct {
-	Stops            []Stop
-	Routes           []Route
-	Trips            []Trip
-	StopTimes        []StopTime
-	Transfers        []Transfer
-	ParentsStations  []ParentsStation
-	PositionsInTrain []PositionInTrain
+	fmt.Println("extra.bin")
+	saveFile(buildExtraData("data/raw"), "data/processed/extra.bin")
 }
 
 func buildNetWork(path string) io.Reader {
@@ -268,7 +79,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer stopsFile.Close()
-		stops, err := parseCSV[Stop](',', stopsFile)
+		stops, err := parseCSV[types.Stop](',', stopsFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -280,7 +91,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer routesFile.Close()
-		routes, err := parseCSV[Route](',', routesFile)
+		routes, err := parseCSV[types.Route](',', routesFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -292,7 +103,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer tripsFile.Close()
-		trips, err := parseCSV[Trip](',', tripsFile)
+		trips, err := parseCSV[types.Trip](',', tripsFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -304,7 +115,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer transfersFile.Close()
-		transfers, err := parseCSV[Transfer](',', transfersFile)
+		transfers, err := parseCSV[types.Transfer](',', transfersFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -316,7 +127,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer parentsFile.Close()
-		parents, err := parseCSV[ParentsStation](';', parentsFile)
+		parents, err := parseCSV[types.ParentsStation](';', parentsFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -328,7 +139,7 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer posFile.Close()
-		positions, err := parseCSV[PositionInTrain](';', posFile)
+		positions, err := parseCSV[types.PositionInTrain](';', posFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
@@ -340,13 +151,13 @@ func buildNetWork(path string) io.Reader {
 			return
 		}
 		defer stopTimesFile.Close()
-		stopTimes, err := parseCSV[StopTime](',', stopTimesFile)
+		stopTimes, err := parseCSV[types.StopTime](',', stopTimesFile)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
 		}
 
-		net := Network{
+		net := types.Network{
 			Stops:            stops,
 			Routes:           routes,
 			Trips:            trips,
@@ -364,6 +175,91 @@ func buildNetWork(path string) io.Reader {
 	}()
 
 	return pr
+}
+
+func buildExtraData(path string) io.Reader {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		var extra types.ExtraData
+
+		if f, err := readFile(fmt.Sprintf("%s/agency.txt", path)); err == nil {
+			if data, err := parseCSV[types.Agency](',', f); err == nil {
+				extra.Agencies = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/calendar.txt", path)); err == nil {
+			if data, err := parseCSV[types.Calendar](',', f); err == nil {
+				extra.Calendars = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/calendar_dates.txt", path)); err == nil {
+			if data, err := parseCSV[types.CalendarDate](',', f); err == nil {
+				extra.CalendarDates = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/shapes.txt", path)); err == nil {
+			if data, err := parseCSV[types.ShapePoint](',', f); err == nil {
+				extra.Shapes = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/pathways.txt", path)); err == nil {
+			if data, err := parseCSV[types.Pathway](',', f); err == nil {
+				extra.Pathways = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/attributions.txt", path)); err == nil {
+			if data, err := parseCSV[types.Attribution](',', f); err == nil {
+				extra.Attributions = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/booking_rules.txt", path)); err == nil {
+			if data, err := parseCSV[types.BookingRule](',', f); err == nil {
+				extra.BookingRules = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/object_codes_extension.txt", path)); err == nil {
+			if data, err := parseCSV[types.ObjectCodeExtension](',', f); err == nil {
+				extra.ObjectCodesExtension = data
+			}
+			f.Close()
+		}
+
+		if f, err := readFile(fmt.Sprintf("%s/ticketing_deep_links.txt", path)); err == nil {
+			if data, err := parseCSV[types.TicketingDeepLink](',', f); err == nil {
+				extra.TicketingDeepLinks = data
+			}
+			f.Close()
+		}
+
+		enc := gob.NewEncoder(pw)
+		if err := enc.Encode(extra); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+	}()
+
+	return pr
+}
+
+func buildExtra(path string) io.Reader {
+	return buildExtraData(path)
 }
 
 func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
@@ -424,20 +320,20 @@ func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
 				continue
 			}
 
-			if field.Type() == reflect.TypeFor[ParentType]() {
-				field.SetUint(uint64(parseParentType(text)))
+			if field.Type() == reflect.TypeFor[types.ParentType]() {
+				field.SetUint(uint64(types.ParseParentType(text)))
 				continue
 			}
-			if field.Type() == reflect.TypeFor[GTFSTime]() {
-				gtfsTime, parseErr := parseGTFSTime(text)
+			if field.Type() == reflect.TypeFor[types.GTFSTime]() {
+				gtfsTime, parseErr := types.ParseGTFSTime(text)
 				if parseErr != nil {
 					return nil, parseErr
 				}
 				field.SetUint(uint64(gtfsTime))
 				continue
 			}
-			if field.Type() == reflect.TypeFor[TrainPosition]() {
-				field.SetUint(uint64(parseTrainPosition(text)))
+			if field.Type() == reflect.TypeFor[types.TrainPosition]() {
+				field.SetUint(uint64(types.ParseTrainPosition(text)))
 				continue
 			}
 
