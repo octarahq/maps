@@ -108,3 +108,35 @@ func (e *Engine) SearchStopById(query string) (types.Stop, bool) {
 
 	return types.Stop{}, false
 }
+
+func (e *Engine) SearchStopsByNeerCord(lon, lat float64, maxK int) []types.Stop {
+	type nearbyStop struct {
+		stop     types.Stop
+		distance float64
+	}
+
+	stops := make([]nearbyStop, 0, len(e.Net.Stops))
+	for _, stop := range e.Net.Stops {
+		if stop.ParentStation != "" {
+			continue
+		}
+		distance := utils.CoordsGetDistance(stop.Long, stop.Lat, lon, lat)
+
+		stops = append(stops, nearbyStop{stop: stop, distance: distance})
+	}
+
+	sort.Slice(stops, func(i, j int) bool {
+		return stops[i].distance < stops[j].distance
+	})
+
+	if maxK > 0 && maxK < len(stops) {
+		stops = stops[:maxK]
+	}
+
+	result := make([]types.Stop, 0, len(stops))
+	for _, nearby := range stops {
+		result = append(result, nearby.stop)
+	}
+
+	return result
+}
