@@ -32,10 +32,24 @@ func main() {
 	stops := utils.IndexStopsByID(engine.Net.Stops)
 	routes := utils.IndexRoutesByID(engine.Net.Routes)
 
+
 	parsedTrip := utils.BuildTripFormPath(path)
 
 	for _, step := range parsedTrip.Steps {
-		fmt.Printf("From %s To %s via %s\n", stops[step.FromSID].Name, stops[step.ToSID].Name, routes[step.ViaRID].LName)
+		rName := "Marche / Correspondance"
+		if step.ViaRID != "" {
+			rName = routes[step.ViaRID].SName
+			if rName == "" {
+				rName = routes[step.ViaRID].LName
+			}
+		}
+		fromName := stops[step.FromSID].Name
+		toName := stops[step.ToSID].Name
+		if fromName == toName && step.ViaRID == "" {
+			fmt.Printf("Correspondance à %s\n", fromName)
+			continue
+		}
+		fmt.Printf("From %s To %s via %s (%d arrêts)\n", fromName, toName, rName, len(step.Stops))
 	}
 
 	fmt.Printf("Take %d sec to search trip\n", int(time.Since(startTime).Seconds()))
