@@ -98,10 +98,8 @@ func (e *Engine) SearchStopsByName(query string) []types.Stop {
 }
 
 func (e *Engine) SearchStopById(query string) (types.Stop, bool) {
-	stops := utils.IndexStopsByID(e.Net.Stops)
-
-	for id, stop := range stops {
-		if id == query {
+	for _, stop := range e.Net.Stops {
+		if stop.SID == query {
 			return stop, true
 		}
 	}

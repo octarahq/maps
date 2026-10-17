@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"maps/api/internal/engine"
 	"maps/api/internal/utils"
 	"time"
@@ -12,31 +11,34 @@ import (
 
 func main() {
 	startTime := time.Now()
-	net, err := utils.LoadNetwork()
-	if err != nil {
-		log.Fatal(err)
-	}
+
+	engine := engine.StartEngine()
 	fmt.Printf("Take %d sec to load\n", int(time.Since(startTime).Seconds()))
 	startTime = time.Now()
 
-	engine := engine.StartEngine(*net)
+	from := engine.SearchStopsByName("Foret de marly")[0]
+	fmt.Println(from.Name)
+	to := engine.SearchStopsByName("Villejuif - Gustave Roussy")[0]
+	fmt.Println(to.Name)
 
-	stop, exist := engine.SearchStopById("IDFM:64405")
-	if !exist {
-		fmt.Println("no exist")
-	}
-	fmt.Println(stop)
-
-	fmt.Printf("Take %d sec to search id\n", int(time.Since(startTime).Seconds()))
+	fmt.Printf("Take %d sec to search stops\n", int(time.Since(startTime).Seconds()))
 	startTime = time.Now()
 
-	stops := engine.SearchStopsByNeerCord(1.978210, 48.876648, 10)
-
-	for _, s := range stops {
-		fmt.Printf("%s %s %s\n", s.Name, s.SID, s.ParentStation)
+	path, err := engine.CalculateRouteStopToStop(from.SID, to.SID)
+	if err != nil {
+		panic(err)
 	}
 
-	fmt.Printf("Take %d sec to search list\n", int(time.Since(startTime).Seconds()))
+	stops := utils.IndexStopsByID(engine.Net.Stops)
+	routes := utils.IndexRoutesByID(engine.Net.Routes)
+
+	parsedTrip := utils.BuildTripFormPath(path)
+
+	for _, step := range parsedTrip.Steps {
+		fmt.Printf("From %s To %s via %s\n", stops[step.FromSID].Name, stops[step.ToSID].Name, routes[step.ViaRID].LName)
+	}
+
+	fmt.Printf("Take %d sec to search trip\n", int(time.Since(startTime).Seconds()))
 	startTime = time.Now()
 
 }
