@@ -1,39 +1,63 @@
 package utils
 
-import "maps/api/internal/types"
+import (
+	"fmt"
+	"strings"
 
-func BuildTripFormPath(path []types.Edge) types.ParesedTrip {
-	if len(path) == 0 {
-		return types.ParesedTrip{}
+	"maps/api/internal/types"
+)
+
+func PrintParsedTrip(trip *types.ParsedTrip) {
+	if trip == nil {
+		fmt.Println("no trip")
+		return
 	}
 
-	var parsedTrip types.ParesedTrip
-	parsedTrip.FromSID = path[0].FromSID
-	parsedTrip.ToSID = path[len(path)-1].ToSID
+	dep := trip.DepartureTime.Format("15:04")
+	arr := trip.ArrivalTime.Format("15:04")
+	durMin := trip.DurationSec / 60
+	walkMin := trip.WalkingDuration / 60
 
-	currentStep := types.ParsedTripStep{
-		FromSID: path[0].FromSID,
-		ToSID:   path[0].ToSID,
-		ViaRID:  path[0].RID,
-		Stops:   []string{path[0].ToSID},
-	}
+	fmt.Println(strings.Repeat("═", 60))
+	fmt.Printf(" trip : %s -> %s (%dh%02dm)\n", dep, arr, durMin/60, durMin%60)
+	fmt.Printf(" duration : %d min (%d walking) | %d corresp.\n", durMin, walkMin, trip.TransfersCount)
+	fmt.Println(strings.Repeat("─", 60))
 
-	for i := 1; i < len(path); i++ {
-		edge := path[i]
-		if edge.RID == currentStep.ViaRID {
-			currentStep.ToSID = edge.ToSID
-			currentStep.Stops = append(currentStep.Stops, edge.ToSID)
+	for i, leg := range trip.Legs {
+		legDep := leg.DepartureTime.Format("15:04")
+		legArr := leg.ArrivalTime.Format("15:04")
+		legDur := leg.DurationSec / 60
+
+		if leg.Type == types.LegTypeWalk {
+			fmt.Printf(" [%s] walking (%d min)\n", legDep, legDur)
+			fmt.Printf("        └─ from : %s\n", leg.FromStopName)
+			fmt.Printf("        └─ to  : %s\n", leg.ToStopName)
 		} else {
-			parsedTrip.Steps = append(parsedTrip.Steps, currentStep)
-			currentStep = types.ParsedTripStep{
-				FromSID: edge.FromSID,
-				ToSID:   edge.ToSID,
-				ViaRID:  edge.RID,
-				Stops:   []string{edge.ToSID},
+			lineName := leg.Route.ShortName
+			if lineName == "" {
+				lineName = leg.Route.RID
 			}
+
+			headsign := ""
+			if leg.Headsign != "" {
+				headsign = fmt.Sprintf(" Dir. %s", leg.Headsign)
+			}
+
+			fmt.Printf(" [%s] Line %s%s (%d min)\n", legDep, lineName, headsign, legDur)
+			fmt.Printf("        ├─ From : %s\n", leg.FromStopName)
+
+			stopCount := len(leg.IntermediateStops)
+			if stopCount > 0 {
+				fmt.Printf("        │  (%d stops)\n", stopCount)
+			}
+
+			fmt.Printf(" [%s] └─ To : %s\n", legArr, leg.ToStopName)
+		}
+
+		if i < len(trip.Legs)-1 {
+			fmt.Println("        │")
 		}
 	}
-	parsedTrip.Steps = append(parsedTrip.Steps, currentStep)
 
-	return parsedTrip
+	fmt.Println(strings.Repeat("═", 60))
 }
