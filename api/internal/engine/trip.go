@@ -167,8 +167,17 @@ func (e *Engine) EdgesToParsedTrip(edges []types.Edge, departureTime time.Time) 
 	}
 
 	trip.DurationSec = totalDuration
-	trip.WalkingDuration = walkingDuration
-	trip.TransfersCount = transfersCount
+	transitLegs := 0
+	for _, l := range trip.Legs {
+		if l.Type == types.LegTypeTransit {
+			transitLegs++
+		}
+	}
+	if transitLegs > 1 {
+		trip.TransfersCount = transitLegs - 1
+	} else {
+		trip.TransfersCount = 0
+	}
 
 	return trip
 }

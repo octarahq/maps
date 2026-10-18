@@ -24,7 +24,7 @@ func main() {
 	fmt.Printf("Take %d sec to search stops\n", int(time.Since(startTime).Seconds()))
 	startTime = time.Now()
 
-	path, err := engine.CalculateRouteStopToStopWithDepartureTime(from.SID, to.SID, startTime)
+	path, err := engine.CalculateRouteStopToStopWithDepartureTime(from.SID, to.SID, startTime) //"IDFM:monomodalStopPlace:58566", "IDFM:21962", startTime)
 	if err != nil {
 		panic(err)
 	}

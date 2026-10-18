@@ -15,85 +15,133 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 }
 
 func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string, dTime time.Time) ([]types.Edge, error) {
-	previous := make(map[string]types.Edge)
+	if fromSID == toSID {
+		return []types.Edge{}, nil
+	}
 
-	type node struct {
+	type stateKey struct {
+		SID     string
+		lastRID string
+	}
+
+	type nodeState struct {
+		time uint32
+		cost int
+	}
+
+	type queueNode struct {
 		SID      string
+		lastRID  string
 		Priority int
 	}
-	queue := utils.NewPriorityQueue[node]()
+
+	queue := utils.NewPriorityQueue[queueNode]()
+	previous := make(map[stateKey]types.Edge)
+	previousKey := make(map[stateKey]stateKey)
+	bestStates := make(map[stateKey]nodeState)
 
 	startSec := uint32(dTime.Hour()*3600 + dTime.Minute()*60 + dTime.Second())
+	startKey := stateKey{SID: fromSID, lastRID: ""}
+	bestStates[startKey] = nodeState{
+		time: startSec,
+		cost: 0,
+	}
 
-	distances := make(map[string]uint32)
-	distances[fromSID] = startSec
-
-	queue.Push(node{
+	queue.Push(queueNode{
 		SID:      fromSID,
-		Priority: int(startSec),
-	}, int(startSec))
+		lastRID:  "",
+		Priority: 0,
+	}, 0)
 
+	var destKey stateKey
 	found := false
+
+	const transferPenalty = 600
+	const waitMultiplier = 1.8
+	const walkMultiplier = 1.5
 
 	for queue.Len() > 0 {
 		current, _ := queue.Pop()
+		currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
 
 		if current.SID == toSID {
 			found = true
+			destKey = currKey
 			break
 		}
 
-		if uint32(current.Priority) > distances[current.SID] {
+		currentState := bestStates[currKey]
+		if current.Priority > currentState.cost {
 			continue
 		}
 
-		currTime := distances[current.SID]
+		currTime := currentState.time
+		currCost := currentState.cost
+		currLastRID := current.lastRID
 
 		for _, edge := range e.Graph[current.SID] {
-			var arrivalTime uint32
+			var nextTime uint32
+			var edgeCost int
+			nextLastRID := currLastRID
 
 			if edge.RID == "" {
-				arrivalTime = currTime + uint32(edge.Weight)
+				nextTime = currTime + uint32(edge.Weight)
+				edgeCost = int(float64(edge.Weight) * walkMultiplier)
 			} else {
-				readyTime := currTime
-				prevEdge := previous[current.SID]
-				if current.SID != fromSID && prevEdge.RID != "" && edge.RID != prevEdge.RID {
-					readyTime += 180
-				}
-
-				sched, ok := utils.FindNextDeparture(edge.Schedules, readyTime)
+				depTime, arrTime, ok := utils.FindNextDepartureWithDep(edge.Schedules, currTime)
 				if !ok {
 					continue
 				}
-				arrivalTime = sched.Arr
+
+				nextTime = arrTime
+				waitTime := int(depTime - currTime)
+				rideTime := int(arrTime - depTime)
+
+				if currLastRID == edge.RID {
+					edgeCost = rideTime + waitTime
+				} else {
+					edgeCost = rideTime + int(float64(waitTime)*waitMultiplier)
+					if currLastRID != "" {
+						edgeCost += transferPenalty
+					}
+				}
+				nextLastRID = edge.RID
 			}
 
-			currentBest, exists := distances[edge.ToSID]
-			if !exists || arrivalTime < currentBest {
-				distances[edge.ToSID] = arrivalTime
-				previous[edge.ToSID] = edge
-				queue.Push(node{
+			tentativeCost := currCost + edgeCost
+			nextKey := stateKey{SID: edge.ToSID, lastRID: nextLastRID}
+
+			best, exists := bestStates[nextKey]
+			if !exists || tentativeCost < best.cost {
+				bestStates[nextKey] = nodeState{
+					time: nextTime,
+					cost: tentativeCost,
+				}
+				previous[nextKey] = edge
+				previousKey[nextKey] = currKey
+				queue.Push(queueNode{
 					SID:      edge.ToSID,
-					Priority: int(arrivalTime),
-				}, int(arrivalTime))
+					lastRID:  nextLastRID,
+					Priority: tentativeCost,
+				}, tentativeCost)
 			}
 		}
 	}
 
-	if !found && fromSID != toSID {
+	if !found {
 		return nil, fmt.Errorf("no path found %s - %s", fromSID, toSID)
 	}
 
-	curr := toSID
+	currKey := destKey
 	var path []types.Edge
 
-	for curr != fromSID {
-		edge, ok := previous[curr]
+	for currKey.SID != fromSID {
+		edge, ok := previous[currKey]
 		if !ok {
 			return nil, fmt.Errorf("no path found")
 		}
 		path = append(path, edge)
-		curr = edge.FromSID
+		currKey = previousKey[currKey]
 	}
 
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
