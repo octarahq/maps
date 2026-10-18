@@ -39,6 +39,26 @@ func BuildGraph(net *types.Network) types.GraphType {
 		}
 	}
 
+	for _, tr := range net.Transfers {
+		if tr.FromSID == tr.ToSID {
+			continue
+		}
+		w := int(tr.MinTTime)
+		if w <= 0 {
+			w = 180
+		}
+		key := fmt.Sprintf("%s-%s@walk", tr.FromSID, tr.ToSID)
+		if !savedStep[key] {
+			graph[tr.FromSID] = append(graph[tr.FromSID], types.Edge{
+				FromSID: tr.FromSID,
+				ToSID:   tr.ToSID,
+				Weight:  w,
+				RID:     "",
+			})
+			savedStep[key] = true
+		}
+	}
+
 	platformsByParent := make(map[string][]string)
 	for _, s := range net.Stops {
 		if s.ParentStation != "" {
@@ -58,7 +78,7 @@ func BuildGraph(net *types.Network) types.GraphType {
 						graph[from] = append(graph[from], types.Edge{
 							FromSID: from,
 							ToSID:   to,
-							Weight:  120,
+							Weight:  180,
 							RID:     "",
 						})
 						savedStep[key] = true
@@ -75,7 +95,7 @@ func BuildGraph(net *types.Network) types.GraphType {
 				graph[s.ParentStation] = append(graph[s.ParentStation], types.Edge{
 					FromSID: s.ParentStation,
 					ToSID:   s.SID,
-					Weight:  0,
+					Weight:  180,
 					RID:     "",
 				})
 				savedStep[keyParentToQuai] = true
@@ -86,31 +106,11 @@ func BuildGraph(net *types.Network) types.GraphType {
 				graph[s.SID] = append(graph[s.SID], types.Edge{
 					FromSID: s.SID,
 					ToSID:   s.ParentStation,
-					Weight:  0,
+					Weight:  180,
 					RID:     "",
 				})
 				savedStep[keyQuaiToParent] = true
 			}
-		}
-	}
-
-	for _, tr := range net.Transfers {
-		if tr.FromSID == tr.ToSID {
-			continue
-		}
-		w := int(tr.MinTTime)
-		if w <= 0 {
-			w = 120
-		}
-		key := fmt.Sprintf("%s-%s@transfer", tr.FromSID, tr.ToSID)
-		if !savedStep[key] {
-			graph[tr.FromSID] = append(graph[tr.FromSID], types.Edge{
-				FromSID: tr.FromSID,
-				ToSID:   tr.ToSID,
-				Weight:  w,
-				RID:     "",
-			})
-			savedStep[key] = true
 		}
 	}
 

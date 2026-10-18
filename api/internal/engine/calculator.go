@@ -47,8 +47,13 @@ func (e *Engine) CalculateRouteStopToStop(fromSID, toSID string) ([]types.Edge, 
 			tentativeDist := distances[current.SID] + edge.Weight
 
 			prevEdge := previous[current.SID]
-			if edge.RID != "" && edge.RID != prevEdge.RID {
-				tentativeDist += 300
+			if current.SID != fromSID {
+				if edge.RID != "" && edge.RID != prevEdge.RID {
+					tentativeDist += 300
+				}
+				if edge.RID == "" && prevEdge.RID != "" {
+					tentativeDist += 120
+				}
 			}
 
 			currentBest, exists := distances[edge.ToSID]
