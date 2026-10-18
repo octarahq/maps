@@ -24,16 +24,16 @@ func main() {
 	fmt.Printf("Take %d sec to search stops\n", int(time.Since(startTime).Seconds()))
 	startTime = time.Now()
 
-	path, err := engine.CalculateRouteStopToStop(from.SID, to.SID)
+	path, err := engine.CalculateRouteStopToStopWithDepartureTime(from.SID, to.SID, startTime)
 	if err != nil {
 		panic(err)
 	}
 
-	trip := engine.EdgesToParsedTrip(path, time.Now())
+	trip := engine.EdgesToParsedTrip(path, startTime)
 
 	utils.PrintParsedTrip(trip)
 
-	fmt.Printf("Take %d sec to search trip\n", int(time.Since(startTime).Seconds()))
+	fmt.Printf("Take %d ms to search trip\n", int(time.Since(startTime).Milliseconds()))
 	startTime = time.Now()
 
 }

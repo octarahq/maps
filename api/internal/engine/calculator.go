@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"maps/api/internal/types"
 	"maps/api/internal/utils"
+	"time"
 )
 
-func (e *Engine) CalculateRouteCordsToCords(lonFrom, latFrom, lonTo, latTo float64) ([]types.Edge, error) {
+func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, lonTo, latTo float64, dTime time.Time) ([]types.Edge, error) {
 	fromStop := e.SearchStopsByNeerCord(lonFrom, latFrom, 1)[0]
 	toStop := e.SearchStopsByNeerCord(lonTo, latTo, 1)[0]
 
-	return e.CalculateRouteStopToStop(fromStop.SID, toStop.SID)
+	return e.CalculateRouteStopToStopWithDepartureTime(fromStop.SID, toStop.SID, dTime)
 }
 
-func (e *Engine) CalculateRouteStopToStop(fromSID, toSID string) ([]types.Edge, error) {
-	distances := make(map[string]int)
+func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string, dTime time.Time) ([]types.Edge, error) {
 	previous := make(map[string]types.Edge)
 
 	type node struct {
@@ -23,11 +23,15 @@ func (e *Engine) CalculateRouteStopToStop(fromSID, toSID string) ([]types.Edge, 
 	}
 	queue := utils.NewPriorityQueue[node]()
 
-	distances[fromSID] = 0
+	startSec := uint32(dTime.Hour()*3600 + dTime.Minute()*60 + dTime.Second())
+
+	distances := make(map[string]uint32)
+	distances[fromSID] = startSec
+
 	queue.Push(node{
 		SID:      fromSID,
-		Priority: 0,
-	}, 0)
+		Priority: int(startSec),
+	}, int(startSec))
 
 	found := false
 
@@ -39,31 +43,39 @@ func (e *Engine) CalculateRouteStopToStop(fromSID, toSID string) ([]types.Edge, 
 			break
 		}
 
-		if current.Priority > distances[current.SID] {
+		if uint32(current.Priority) > distances[current.SID] {
 			continue
 		}
 
-		for _, edge := range e.Graph[current.SID] {
-			tentativeDist := distances[current.SID] + edge.Weight
+		currTime := distances[current.SID]
 
-			prevEdge := previous[current.SID]
-			if current.SID != fromSID {
-				if edge.RID != "" && edge.RID != prevEdge.RID {
-					tentativeDist += 300
+		for _, edge := range e.Graph[current.SID] {
+			var arrivalTime uint32
+
+			if edge.RID == "" {
+				arrivalTime = currTime + uint32(edge.Weight)
+			} else {
+				readyTime := currTime
+				prevEdge := previous[current.SID]
+				if current.SID != fromSID && prevEdge.RID != "" && edge.RID != prevEdge.RID {
+					readyTime += 180
 				}
-				if edge.RID == "" && prevEdge.RID != "" {
-					tentativeDist += 120
+
+				sched, ok := utils.FindNextDeparture(edge.Schedules, readyTime)
+				if !ok {
+					continue
 				}
+				arrivalTime = sched.Arr
 			}
 
 			currentBest, exists := distances[edge.ToSID]
-			if !exists || tentativeDist < currentBest {
-				distances[edge.ToSID] = tentativeDist
+			if !exists || arrivalTime < currentBest {
+				distances[edge.ToSID] = arrivalTime
 				previous[edge.ToSID] = edge
 				queue.Push(node{
 					SID:      edge.ToSID,
-					Priority: tentativeDist,
-				}, tentativeDist)
+					Priority: int(arrivalTime),
+				}, int(arrivalTime))
 			}
 		}
 	}
