@@ -1,5 +1,11 @@
 package types
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 type ShapePoint struct {
 	ShapeID string  `csv:"shape_id"`
 	Lat     float64 `csv:"shape_pt_lat"`
@@ -87,6 +93,41 @@ type TicketingDeepLink struct {
 	IOSUniversalLinkURL string `csv:"ios_universal_link_url"`
 }
 
+func ParseBikeParkingAccess(s string) bool {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "OUI":
+		return true
+	default:
+		return false
+	}
+}
+
+func ParseBikeParkingCoords(s string) (lat float64, lon float64, err error) {
+	parts := strings.Split(s, ",")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid coordinates format: %s", s)
+	}
+	lat, err = strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	lon, err = strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return lat, lon, nil
+}
+
+type BikeParking struct {
+	OSMID    string  `csv:"osm_id"`
+	Lon      float64 `csv:"lon"`
+	Lat      float64 `csv:"lat"`
+	Name     string  `csv:"nom_com|nom"`
+	Capacite int     `csv:"capacite"`
+	Cover    bool    `csv:"couvert"`
+	Payant   bool    `csv:"payant"`
+}
+
 type ExtraData struct {
 	Agencies             []Agency
 	Calendars            []Calendar
@@ -97,4 +138,5 @@ type ExtraData struct {
 	BookingRules         []BookingRule
 	ObjectCodesExtension []ObjectCodeExtension
 	TicketingDeepLinks   []TicketingDeepLink
+	BikeParkings         []BikeParking
 }

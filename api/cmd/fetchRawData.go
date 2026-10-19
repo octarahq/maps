@@ -38,6 +38,11 @@ var DataUrls = []struct {
 		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/positionnement-dans-la-rame/exports/csv",
 		FileType: "csv",
 	},
+	{
+		Name:     "bikes_parking.csv",
+		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/stationnement-velo-en-ile-de-france/exports/csv",
+		FileType: "csv",
+	},
 }
 
 func main() {
@@ -248,6 +253,13 @@ func buildExtraData(path string) io.Reader {
 			f.Close()
 		}
 
+		if f, err := readFile(fmt.Sprintf("%s/bikes_parking.csv", path)); err == nil {
+			if data, err := parseCSV[types.BikeParking](';', f); err == nil {
+				extra.BikeParkings = data
+			}
+			f.Close()
+		}
+
 		enc := gob.NewEncoder(pw)
 		if err := enc.Encode(extra); err != nil {
 			pw.CloseWithError(err)
@@ -288,13 +300,44 @@ func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
 		fields[i] = -1
 		for j := 0; j < valueType.NumField(); j++ {
 			field := valueType.Field(j)
-			csvName := strings.Split(field.Tag.Get("csv"), ",")[0]
-			if (csvName != "" && csvName != "-" && strings.EqualFold(csvName, header)) ||
-				strings.EqualFold(field.Name, strings.ReplaceAll(header, "_", "")) ||
+			csvTag := strings.Split(field.Tag.Get("csv"), ",")[0]
+			matched := false
+			if csvTag != "" && csvTag != "-" {
+				for _, candidate := range strings.Split(csvTag, "|") {
+					if strings.EqualFold(strings.TrimSpace(candidate), header) {
+						fields[i] = j
+						matched = true
+						break
+					}
+				}
+			}
+			if matched {
+				break
+			}
+			if strings.EqualFold(field.Name, strings.ReplaceAll(header, "_", "")) ||
 				strings.EqualFold(field.Name, header) {
 				fields[i] = j
 				break
 			}
+		}
+	}
+
+	geoPointCol := -1
+	for i, header := range headers {
+		clean := strings.ToLower(strings.TrimSpace(header))
+		if clean == "geo_point_2d" || clean == "geo_point" || clean == "geopoint" {
+			geoPointCol = i
+			break
+		}
+	}
+	latFieldIdx := -1
+	lonFieldIdx := -1
+	for j := 0; j < valueType.NumField(); j++ {
+		name := strings.ToLower(valueType.Field(j).Name)
+		if name == "lat" || name == "latitude" {
+			latFieldIdx = j
+		} else if name == "lon" || name == "long" || name == "longitude" {
+			lonFieldIdx = j
 		}
 	}
 
@@ -307,6 +350,14 @@ func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
 			return nil, readErr
 		}
 		value := reflect.New(valueType).Elem()
+
+		if geoPointCol >= 0 && geoPointCol < len(record) && latFieldIdx >= 0 && lonFieldIdx >= 0 {
+			if lat, lon, err := types.ParseBikeParkingCoords(record[geoPointCol]); err == nil {
+				value.Field(latFieldIdx).SetFloat(lat)
+				value.Field(lonFieldIdx).SetFloat(lon)
+			}
+		}
+
 		for i, text := range record {
 			if i >= len(fields) || fields[i] < 0 {
 				continue
@@ -361,7 +412,8 @@ func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
 			case reflect.Bool:
 				val, convertErr := strconv.ParseBool(text)
 				if convertErr != nil {
-					return nil, convertErr
+					field.SetBool(types.ParseBikeParkingAccess(text))
+					continue
 				}
 				field.SetBool(val)
 			}
