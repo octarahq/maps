@@ -17,10 +17,15 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 	arr := trip.ArrivalTime.Format("15:04")
 	durMin := trip.DurationSec / 60
 	walkMin := trip.WalkingDuration / 60
+	bikeMin := trip.BikeDuration / 60
 
 	fmt.Println(strings.Repeat("═", 60))
 	fmt.Printf(" trip : %s -> %s (%dh%02dm)\n", dep, arr, durMin/60, durMin%60)
-	fmt.Printf(" duration : %d min (%d walk) | %d transfer(s)\n", durMin, walkMin, trip.TransfersCount)
+	durDetail := fmt.Sprintf("%d walk", walkMin)
+	if bikeMin > 0 {
+		durDetail = fmt.Sprintf("%d walk, %d bike", walkMin, bikeMin)
+	}
+	fmt.Printf(" duration : %d min (%s) | %d transfer(s)\n", durMin, durDetail, trip.TransfersCount)
 	if trip.BikeParking != nil {
 		bp := trip.BikeParking
 		coverStr := "uncovered"
@@ -31,7 +36,11 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 		if bp.Payant {
 			payantStr = "paid"
 		}
-		fmt.Printf(" bike parking : %s (%d spots, %s, %s)\n", bp.Name, bp.Capacite, coverStr, payantStr)
+		distStr := ""
+		if trip.BikeParkingDistM > 0 {
+			distStr = fmt.Sprintf("%.0fm from station, ", trip.BikeParkingDistM)
+		}
+		fmt.Printf(" bike parking : %s (%s%d spots, %s, %s)\n", bp.Name, distStr, bp.Capacite, coverStr, payantStr)
 	}
 	fmt.Println(strings.Repeat("─", 60))
 
@@ -40,11 +49,24 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 		legArr := leg.ArrivalTime.Format("15:04")
 		legDur := leg.DurationSec / 60
 
-		if leg.Type == types.LegTypeWalk {
-			fmt.Printf(" [%s] walk (%d min)\n", legDep, legDur)
+		switch leg.Type {
+		case types.LegTypeWalk:
+			distStr := ""
+			if leg.DistanceKm > 0 {
+				distStr = fmt.Sprintf(", %.2f km", leg.DistanceKm)
+			}
+			fmt.Printf(" [%s] walk (%d min%s)\n", legDep, legDur, distStr)
 			fmt.Printf("        └─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 			fmt.Printf("        └─ to   : %s (wheelchair: %t, bikes: %t)\n", leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
-		} else {
+		case types.LegTypeBike:
+			distStr := ""
+			if leg.DistanceKm > 0 {
+				distStr = fmt.Sprintf(", %.2f km @ 15 km/h", leg.DistanceKm)
+			}
+			fmt.Printf(" [%s] bike (%d min%s)\n", legDep, legDur, distStr)
+			fmt.Printf("        └─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ to   : %s (wheelchair: %t, bikes: %t)\n", leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+		case types.LegTypeTransit:
 			lineName := leg.Route.ShortName
 			if lineName == "" {
 				lineName = leg.Route.RID
@@ -62,6 +84,11 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 			if stopCount > 0 {
 				fmt.Printf("        │  (%d stops)\n", stopCount)
 			}
+			pit := leg.PositionInTrain
+			fmt.Println(pit)
+			if pit.NbWagons > 0 {
+				fmt.Printf("        │  (pos in train %d/%d) avg %d\n", int(pit.Wagon), int(pit.NbWagons), int(pit.PosAvg))
+			}
 
 			fmt.Printf(" [%s] └─ to   : %s (wheelchair: %t, bikes: %t)\n", legArr, leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		}
@@ -72,4 +99,12 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 	}
 
 	fmt.Println(strings.Repeat("═", 60))
+}
+
+func TripParsePositionInTrain(pit types.PositionInTrain) types.TripPositionInTrain {
+	return types.TripPositionInTrain{
+		NbWagons: pit.Wagons,
+		Wagon:    pit.Pos,
+		PosAvg:   pit.PositionAvg,
+	}
 }

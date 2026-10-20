@@ -80,6 +80,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 
 	walkSpeed := 4.8
 	bikeSpeed := 15.0
+	stationStops := e.StationStops()
 
 	var walkDeps []candidateDeparture
 	depStops := e.SearchBoardingStopsByCoord(lonFrom, latFrom, 1.2, 15)
@@ -103,7 +104,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 			}
 		}
 	}
-	for _, s := range e.StationStops {
+	for _, s := range stationStops {
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
 		if d <= 1.2 {
 			walkSec := uint32((d / walkSpeed) * 3600)
@@ -159,7 +160,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	var allBikeDeps []candidateDeparture
 	if config.WithBike {
 		seenDepParents := make(map[string]bool)
-		for _, s := range e.StationStops {
+		for _, s := range stationStops {
 			if config.WheelchairOnly && s.WheelChair == types.AccessibilityNo {
 				continue
 			}
@@ -200,7 +201,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		walkSec := uint32((d / walkSpeed) * 3600)
 		arrMap[s.SID] = candidateArrival{stop: s, walkSec: walkSec, distKm: d}
 	}
-	for _, s := range e.StationStops {
+	for _, s := range stationStops {
 		if config.WheelchairOnly && s.WheelChair == types.AccessibilityNo {
 			continue
 		}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/gob"
+	"fmt"
 	"os"
 
 	"maps/api/internal/types"
@@ -84,6 +85,14 @@ func IndexTransfersByFromStop(transfers []types.Transfer) map[string][]types.Tra
 	m := make(map[string][]types.Transfer)
 	for _, tr := range transfers {
 		m[tr.FromSID] = append(m[tr.FromSID], tr)
+	}
+	return m
+}
+
+func IndexPositionInTrainsByTripKey(positionInTrain []types.PositionInTrain) map[string]types.PositionInTrain {
+	m := make(map[string]types.PositionInTrain)
+	for _, pit := range positionInTrain {
+		m[fmt.Sprintf("%s-%s;%s", pit.FromSID, pit.ToSID, pit.RID)] = pit
 	}
 	return m
 }

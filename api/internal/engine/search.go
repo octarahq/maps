@@ -231,12 +231,37 @@ func (e *Engine) SearchArrivalStopsByCoord(lon, lat float64, maxDistanceKm float
 }
 
 
+func (e *Engine) StationStops() []types.Stop {
+	stationPIDs := make(map[string]bool, len(e.Net.ParentsStations)*2)
+	for _, ps := range e.Net.ParentsStations {
+		if ps.PType == types.ParentTypeRail || ps.PType == types.ParentTypeMetro || ps.PType == types.ParentTypeStreetTram {
+			stationPIDs[ps.PID] = true
+			stationPIDs["IDFM:"+ps.PID] = true
+		}
+	}
+
+	var res []types.Stop
+	for _, s := range e.Net.Stops {
+		if len(e.Graph[s.SID]) == 0 {
+			continue
+		}
+		pid := s.ParentStation
+		if pid == "" {
+			pid = s.SID
+		}
+		if stationPIDs[pid] {
+			res = append(res, s)
+		}
+	}
+	return res
+}
+
 func (e *Engine) SearchNearestStationByCoord(lon, lat float64, maxDistanceKm float64) (types.Stop, bool) {
 	var bestStop types.Stop
 	bestDist := math.MaxFloat64
 	found := false
 
-	for _, s := range e.StationStops {
+	for _, s := range e.StationStops() {
 		dist := utils.CoordsGetDistance(s.Long, s.Lat, lon, lat)
 		if dist <= maxDistanceKm && dist < bestDist {
 			bestDist = dist
@@ -249,7 +274,7 @@ func (e *Engine) SearchNearestStationByCoord(lon, lat float64, maxDistanceKm flo
 }
 
 func (e *Engine) FindNearestBikeParking(lon, lat float64, maxDistanceKm float64) (*types.BikeParking, float64, bool) {
-	if len(e.BikeParkings) == 0 {
+	if len(e.Extras.BikeParkings) == 0 {
 		return nil, 0, false
 	}
 	var best *types.BikeParking
@@ -258,8 +283,8 @@ func (e *Engine) FindNearestBikeParking(lon, lat float64, maxDistanceKm float64)
 	latDelta := maxDistanceKm / 110.0
 	lonDelta := maxDistanceKm / 70.0
 
-	for i := range e.BikeParkings {
-		bp := &e.BikeParkings[i]
+	for i := range e.Extras.BikeParkings {
+		bp := &e.Extras.BikeParkings[i]
 		if math.Abs(bp.Lat-lat) > latDelta || math.Abs(bp.Lon-lon) > lonDelta {
 			continue
 		}
@@ -281,7 +306,7 @@ func (e *Engine) SearchNearestStationWithBikeParkingByCoord(lon, lat float64, ma
 	var bestParking *types.BikeParking
 	bestDist := math.MaxFloat64
 
-	for _, s := range e.StationStops {
+	for _, s := range e.StationStops() {
 		dist := utils.CoordsGetDistance(s.Long, s.Lat, lon, lat)
 		if dist <= maxDistanceKm && dist < bestDist {
 			bp, _, ok := e.FindNearestBikeParking(s.Long, s.Lat, maxParkingDistKm)
