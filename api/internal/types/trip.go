@@ -12,6 +12,7 @@ type ParsedTrip struct {
 	TransfersCount  int           `json:"transfers_count"`
 	IsWheelchair    Accessibility `json:"is_wheelchair"`
 	IsBikesAllowed  Accessibility `json:"is_bikes_allowed"`
+	BikeParking     *BikeParking  `json:"bike_parking,omitempty"`
 	Legs            []TripLeg     `json:"legs"`
 }
 

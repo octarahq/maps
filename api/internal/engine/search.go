@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"math"
 	"sort"
 	"strings"
 
@@ -137,4 +138,164 @@ func (e *Engine) SearchStopsByNeerCord(lon, lat float64, maxK int) []types.Stop 
 	}
 
 	return result
+}
+
+func (e *Engine) SearchBoardingStopsByCoord(lon, lat float64, maxDistanceKm float64, maxK int) []types.Stop {
+	type nearbyStop struct {
+		stop     types.Stop
+		distance float64
+	}
+
+	latDelta := maxDistanceKm / 110.0
+	lonDelta := maxDistanceKm / 70.0
+
+	var stops []nearbyStop
+	for _, stop := range e.Net.Stops {
+		if math.Abs(stop.Lat-lat) > latDelta || math.Abs(stop.Long-lon) > lonDelta {
+			continue
+		}
+		edges := e.Graph[stop.SID]
+		if len(edges) == 0 {
+			continue
+		}
+		hasTransit := false
+		for _, ed := range edges {
+			if ed.RID != "" {
+				hasTransit = true
+				break
+			}
+		}
+		if !hasTransit {
+			continue
+		}
+
+		dist := utils.CoordsGetDistance(stop.Long, stop.Lat, lon, lat)
+		if dist <= maxDistanceKm {
+			stops = append(stops, nearbyStop{stop: stop, distance: dist})
+		}
+	}
+
+	sort.Slice(stops, func(i, j int) bool {
+		return stops[i].distance < stops[j].distance
+	})
+
+	if maxK > 0 && maxK < len(stops) {
+		stops = stops[:maxK]
+	}
+
+	result := make([]types.Stop, 0, len(stops))
+	for _, nearby := range stops {
+		result = append(result, nearby.stop)
+	}
+
+	return result
+}
+
+func (e *Engine) SearchArrivalStopsByCoord(lon, lat float64, maxDistanceKm float64, maxK int) []types.Stop {
+	type nearbyStop struct {
+		stop     types.Stop
+		distance float64
+	}
+
+	latDelta := maxDistanceKm / 110.0
+	lonDelta := maxDistanceKm / 70.0
+
+	var stops []nearbyStop
+	for _, stop := range e.Net.Stops {
+		if math.Abs(stop.Lat-lat) > latDelta || math.Abs(stop.Long-lon) > lonDelta {
+			continue
+		}
+		if len(e.Graph[stop.SID]) == 0 {
+			continue
+		}
+		dist := utils.CoordsGetDistance(stop.Long, stop.Lat, lon, lat)
+		if dist <= maxDistanceKm {
+			stops = append(stops, nearbyStop{stop: stop, distance: dist})
+		}
+	}
+
+	sort.Slice(stops, func(i, j int) bool {
+		return stops[i].distance < stops[j].distance
+	})
+
+	if maxK > 0 && maxK < len(stops) {
+		stops = stops[:maxK]
+	}
+
+	result := make([]types.Stop, 0, len(stops))
+	for _, nearby := range stops {
+		result = append(result, nearby.stop)
+	}
+
+	return result
+}
+
+
+func (e *Engine) SearchNearestStationByCoord(lon, lat float64, maxDistanceKm float64) (types.Stop, bool) {
+	var bestStop types.Stop
+	bestDist := math.MaxFloat64
+	found := false
+
+	for _, s := range e.StationStops {
+		dist := utils.CoordsGetDistance(s.Long, s.Lat, lon, lat)
+		if dist <= maxDistanceKm && dist < bestDist {
+			bestDist = dist
+			bestStop = s
+			found = true
+		}
+	}
+
+	return bestStop, found
+}
+
+func (e *Engine) FindNearestBikeParking(lon, lat float64, maxDistanceKm float64) (*types.BikeParking, float64, bool) {
+	if len(e.BikeParkings) == 0 {
+		return nil, 0, false
+	}
+	var best *types.BikeParking
+	bestDist := math.MaxFloat64
+
+	latDelta := maxDistanceKm / 110.0
+	lonDelta := maxDistanceKm / 70.0
+
+	for i := range e.BikeParkings {
+		bp := &e.BikeParkings[i]
+		if math.Abs(bp.Lat-lat) > latDelta || math.Abs(bp.Lon-lon) > lonDelta {
+			continue
+		}
+		dist := utils.CoordsGetDistance(lon, lat, bp.Lon, bp.Lat)
+		if dist <= maxDistanceKm && dist < bestDist {
+			bestDist = dist
+			best = bp
+		}
+	}
+
+	if best != nil {
+		return best, bestDist, true
+	}
+	return nil, 0, false
+}
+
+func (e *Engine) SearchNearestStationWithBikeParkingByCoord(lon, lat float64, maxDistanceKm float64, maxParkingDistKm float64) (types.Stop, *types.BikeParking, bool) {
+	var bestStop types.Stop
+	var bestParking *types.BikeParking
+	bestDist := math.MaxFloat64
+
+	for _, s := range e.StationStops {
+		dist := utils.CoordsGetDistance(s.Long, s.Lat, lon, lat)
+		if dist <= maxDistanceKm && dist < bestDist {
+			bp, _, ok := e.FindNearestBikeParking(s.Long, s.Lat, maxParkingDistKm)
+			if !ok {
+				continue
+			}
+			bestDist = dist
+			bestStop = s
+			bestParking = bp
+		}
+	}
+
+	if bestParking != nil {
+		return bestStop, bestParking, true
+	}
+	return bestStop, nil, false
 }

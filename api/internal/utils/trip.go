@@ -20,7 +20,19 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 
 	fmt.Println(strings.Repeat("═", 60))
 	fmt.Printf(" trip : %s -> %s (%dh%02dm)\n", dep, arr, durMin/60, durMin%60)
-	fmt.Printf(" duration : %d min (%d walking) | %d corresp.\n", durMin, walkMin, trip.TransfersCount)
+	fmt.Printf(" duration : %d min (%d walk) | %d transfer(s)\n", durMin, walkMin, trip.TransfersCount)
+	if trip.BikeParking != nil {
+		bp := trip.BikeParking
+		coverStr := "uncovered"
+		if bp.Cover {
+			coverStr = "covered"
+		}
+		payantStr := "free"
+		if bp.Payant {
+			payantStr = "paid"
+		}
+		fmt.Printf(" bike parking : %s (%d spots, %s, %s)\n", bp.Name, bp.Capacite, coverStr, payantStr)
+	}
 	fmt.Println(strings.Repeat("─", 60))
 
 	for i, leg := range trip.Legs {
@@ -29,9 +41,9 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 		legDur := leg.DurationSec / 60
 
 		if leg.Type == types.LegTypeWalk {
-			fmt.Printf(" [%s] walking (%d min)\n", legDep, legDur)
-			fmt.Printf("        └─ from : %s\n", leg.FromStopName)
-			fmt.Printf("        └─ to  : %s\n", leg.ToStopName)
+			fmt.Printf(" [%s] walk (%d min)\n", legDep, legDur)
+			fmt.Printf("        └─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ to   : %s (wheelchair: %t, bikes: %t)\n", leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		} else {
 			lineName := leg.Route.ShortName
 			if lineName == "" {
@@ -44,14 +56,14 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 			}
 
 			fmt.Printf(" [%s] Line %s%s (%d min)\n", legDep, lineName, headsign, legDur)
-			fmt.Printf("        ├─ From : %s\n", leg.FromStopName)
+			fmt.Printf("        ├─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 
 			stopCount := len(leg.IntermediateStops)
 			if stopCount > 0 {
 				fmt.Printf("        │  (%d stops)\n", stopCount)
 			}
 
-			fmt.Printf(" [%s] └─ To : %s\n", legArr, leg.ToStopName)
+			fmt.Printf(" [%s] └─ to   : %s (wheelchair: %t, bikes: %t)\n", legArr, leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		}
 
 		if i < len(trip.Legs)-1 {
