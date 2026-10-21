@@ -20,7 +20,7 @@ type CalculatorConfig struct {
 	WithCar  bool `json:"with_car"` //not implemented
 	WithBike bool `json:"with_bike"`
 
-	WheelchairOnly bool `json:"wheelchair_only"` //il faudrait demander plus quun bool (permet de proposer des arrets dans les campagnes ect ou on sait pas)
+	WheelchairOnly Accessibility `json:"wheelchair_only"`
 }
 
 type RoutesToCalculateType struct {
