@@ -167,3 +167,25 @@ func BuildGraph(net *types.Network) types.GraphType {
 
 	return graph
 }
+
+func BuildReverseGraph(graph types.GraphType) types.GraphType {
+	reverseGraph := make(types.GraphType)
+	for _, edges := range graph {
+		for _, edge := range edges {
+			revEdge := edge
+			if len(edge.Schedules) > 1 {
+				revEdge.Schedules = make([]types.DepartureTime, len(edge.Schedules))
+				copy(revEdge.Schedules, edge.Schedules)
+				slices.SortFunc(revEdge.Schedules, func(a, b types.DepartureTime) int {
+					if a.Arr != b.Arr {
+						return cmp.Compare(a.Arr, b.Arr)
+					}
+					return cmp.Compare(a.Dep, b.Dep)
+				})
+			}
+			reverseGraph[edge.ToSID] = append(reverseGraph[edge.ToSID], revEdge)
+		}
+	}
+	return reverseGraph
+}
+

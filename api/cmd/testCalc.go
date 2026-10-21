@@ -23,34 +23,73 @@ func main() {
 	lonTo, latTo := 2.357834, 48.797749
 
 	now := time.Now()
-	targetTime := time.Date(now.Year(), now.Month(), now.Day()+1, 8, 0, 0, 0, now.Location())
+	depTarget := time.Date(now.Year(), now.Month(), now.Day()+1, 8, 0, 0, 0, now.Location())
 
-	config := types.CalculatorConfig{
-		TargetTime:   targetTime,
+	configDep := types.CalculatorConfig{
+		TargetTime:   depTarget,
 		TimeType:     types.TimeTypeDeparture,
 		AllowedModes: []types.RouteType{types.RouteTypeTrain, types.RouteTypeMetro, types.RouteTypeBus, types.RouteTypeTram},
 		WithCar:      false,
 		WithBike:     true,
 	}
 
+	fmt.Println("\n============================================================")
+	fmt.Printf(" test 1 departure time at %s\n", depTarget.Format("15:04"))
+	fmt.Println("============================================================")
+
 	searchStart := time.Now()
-	routes, err := eng.CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, lonTo, latTo, config)
+	routesDep, err := eng.CalculateRouteCordsToCords(lonFrom, latFrom, lonTo, latTo, configDep)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Found %d routes in %dms\n", len(routes), time.Since(searchStart).Milliseconds())
+	fmt.Printf("Found %d routes in %dms\n", len(routesDep), time.Since(searchStart).Milliseconds())
 
 	order := []string{"fastest", "comfort", "least_walk", "nearest_station"}
 	for _, name := range order {
-		path, ok := routes[name]
+		path, ok := routesDep[name]
 		if !ok || len(path) == 0 {
 			continue
 		}
 
 		fmt.Printf("\n════════════════════════════════════════════════════════════\n")
-		fmt.Printf(" ROUTE: %s\n", strings.ToUpper(name))
+		fmt.Printf(" ROUTE (DEPARTURE): %s\n", strings.ToUpper(name))
 
-		trip := eng.EdgesToParsedTrip(path, lonFrom, latFrom, lonTo, latTo, config)
+		trip := eng.EdgesToParsedTrip(path, lonFrom, latFrom, lonTo, latTo, configDep)
+		if trip != nil {
+			utils.PrintParsedTrip(trip)
+		}
+	}
+
+	arrTarget := time.Date(now.Year(), now.Month(), now.Day()+1, 9, 30, 0, 0, now.Location())
+	configArr := types.CalculatorConfig{
+		TargetTime:   arrTarget,
+		TimeType:     types.TimeTypeArrival,
+		AllowedModes: []types.RouteType{types.RouteTypeTrain, types.RouteTypeMetro, types.RouteTypeBus, types.RouteTypeTram},
+		WithCar:      false,
+		WithBike:     true,
+	}
+
+	fmt.Println("\n============================================================")
+	fmt.Printf(" test 2 arrival time at %s\n", arrTarget.Format("15:04"))
+	fmt.Println("============================================================")
+
+	searchStartArr := time.Now()
+	routesArr, err := eng.CalculateRouteCordsToCords(lonFrom, latFrom, lonTo, latTo, configArr)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Found %d routes in %dms\n", len(routesArr), time.Since(searchStartArr).Milliseconds())
+
+	for _, name := range order {
+		path, ok := routesArr[name]
+		if !ok || len(path) == 0 {
+			continue
+		}
+
+		fmt.Printf("\n════════════════════════════════════════════════════════════\n")
+		fmt.Printf(" ROUTE (ARRIVAL): %s\n", strings.ToUpper(name))
+
+		trip := eng.EdgesToParsedTrip(path, lonFrom, latFrom, lonTo, latTo, configArr)
 		if trip != nil {
 			utils.PrintParsedTrip(trip)
 		}

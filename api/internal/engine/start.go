@@ -7,9 +7,10 @@ import (
 )
 
 type Engine struct {
-	Net    types.Network
-	Graph  types.GraphType
-	Extras types.ExtraData
+	Net          types.Network
+	Graph        types.GraphType
+	ReverseGraph types.GraphType
+	Extras       types.ExtraData
 }
 
 func StartEngine() Engine {
@@ -21,6 +22,7 @@ func StartEngine() Engine {
 	e.Net = *net
 
 	e.Graph = utils.BuildGraph(net)
+	e.ReverseGraph = utils.BuildReverseGraph(e.Graph)
 
 	extra, err := utils.LoadExtra()
 	if err == nil && extra != nil {

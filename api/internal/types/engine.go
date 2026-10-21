@@ -13,7 +13,7 @@ const (
 
 type CalculatorConfig struct {
 	TargetTime time.Time `json:"target_time"`
-	TimeType   TimeType  `json:"time_type"` //not implemented
+	TimeType   TimeType  `json:"time_type"`
 
 	AllowedModes []RouteType `json:"allowed_modes,omitempty"`
 
