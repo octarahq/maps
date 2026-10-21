@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"maps/api/internal/types"
-	"maps/api/internal/utils"
+	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 )
 
 func normalize(s string) string {
@@ -229,7 +229,6 @@ func (e *Engine) SearchArrivalStopsByCoord(lon, lat float64, maxDistanceKm float
 
 	return result
 }
-
 
 func (e *Engine) StationStops() []types.Stop {
 	stationPIDs := make(map[string]bool, len(e.Net.ParentsStations)*2)

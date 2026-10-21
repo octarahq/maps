@@ -2,7 +2,7 @@ package utils
 
 import (
 	"cmp"
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 	"slices"
 )
 
@@ -141,4 +141,3 @@ func FindPrevDepartureWithArr(schedules []types.DepartureTime, currSec uint32, a
 	}
 	return 0, 0, false
 }
-

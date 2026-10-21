@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"maps/api/internal/types"
-	"maps/api/internal/utils"
+	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 )
 
 func (e *Engine) CalculateRouteCordsToCords(lonFrom, latFrom, lonTo, latTo float64, config types.CalculatorConfig) (map[string][]types.Edge, error) {

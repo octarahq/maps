@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 )
 
 func LoadNetwork(path ...string) (*types.Network, error) {

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"maps/api/internal/engine"
-	"maps/api/internal/types"
-	"maps/api/internal/utils"
+	"maps/backend/internal/engine"
+	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 )
 
 func main() {

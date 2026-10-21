@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 )
 
 var DataUrls = []struct {

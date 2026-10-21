@@ -2,8 +2,8 @@ package engine
 
 import (
 	"fmt"
-	"maps/api/internal/types"
-	"maps/api/internal/utils"
+	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 	"time"
 )
 

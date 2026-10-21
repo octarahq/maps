@@ -1,6 +1,6 @@
 package utils
 
-import "maps/api/internal/types"
+import "maps/backend/internal/types"
 
 func CheckAllowedRouteType(rType types.RouteType, allowedTypes []types.RouteType) bool {
 	for _, aType := range allowedTypes {

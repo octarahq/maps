@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 )
 
 func PrintParsedTrip(trip *types.ParsedTrip) {

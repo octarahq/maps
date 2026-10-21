@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
-	"maps/api/internal/types"
-	"maps/api/internal/utils"
+	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 )
 
 type Engine struct {

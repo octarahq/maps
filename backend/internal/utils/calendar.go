@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 )
 
 type CalendarRule struct {

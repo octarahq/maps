@@ -1,6 +1,6 @@
 package utils
 
-import "maps/api/internal/types"
+import "maps/backend/internal/types"
 
 func IsAccessible(access types.Accessibility) bool {
 	switch access {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"maps/api/internal/types"
+	"maps/backend/internal/types"
 )
 
 func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType {
@@ -199,4 +199,3 @@ func BuildReverseGraph(graph types.GraphType) types.GraphType {
 	}
 	return reverseGraph
 }
-
