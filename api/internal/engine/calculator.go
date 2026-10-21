@@ -2,9 +2,11 @@ package engine
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"maps/api/internal/types"
 	"maps/api/internal/utils"
-	"sync"
 )
 
 func (e *Engine) CalculateRouteCordsToCords(lonFrom, latFrom, lonTo, latTo float64, config types.CalculatorConfig) (map[string][]types.Edge, error) {
@@ -18,6 +20,13 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	if config.TimeType == types.TimeTypeArrival {
 		return e.CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lonTo, latTo, config)
 	}
+
+	targetTime := config.TargetTime
+	if targetTime.IsZero() {
+		targetTime = time.Now()
+	}
+	activeServices := e.GetActiveServices(targetTime)
+
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
 			Name:   "comfort",
@@ -376,7 +385,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 						nextTime = currTime + uint32(edge.Weight)
 						edgeCost = int(float64(edge.Weight) * walkMultiplier)
 					} else {
-						depTime, arrTime, okNext := utils.FindNextDepartureWithDep(edge.Schedules, currTime)
+						depTime, arrTime, okNext := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
 						if !okNext {
 							continue
 						}
@@ -492,9 +501,15 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	previousKey := make(map[stateKey]stateKey)
 	bestStates := make(map[stateKey]nodeState)
 
+	targetTime := route.Config.TargetTime
+	if targetTime.IsZero() {
+		targetTime = time.Now()
+	}
+	activeServices := e.GetActiveServices(targetTime)
+
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
-	startSec := uint32(route.Config.TargetTime.Hour()*3600 + route.Config.TargetTime.Minute()*60 + route.Config.TargetTime.Second())
+	startSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	startKey := stateKey{SID: fromSID, lastRID: ""}
 	bestStates[startKey] = nodeState{
 		time: startSec,
@@ -551,7 +566,7 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 				nextTime = currTime + uint32(edge.Weight)
 				edgeCost = int(float64(edge.Weight) * walkMultiplier)
 			} else {
-				depTime, arrTime, ok := utils.FindNextDepartureWithDep(edge.Schedules, currTime)
+				depTime, arrTime, ok := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
 				if !ok {
 					continue
 				}
@@ -615,6 +630,12 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 }
 
 func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lonTo, latTo float64, config types.CalculatorConfig) (map[string][]types.Edge, error) {
+	targetTime := config.TargetTime
+	if targetTime.IsZero() {
+		targetTime = time.Now()
+	}
+	activeServices := e.GetActiveServices(targetTime)
+
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
 			Name:   "comfort",
@@ -987,7 +1008,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 						prevTime = currTime - uint32(edge.Weight)
 						edgeCost = int(float64(edge.Weight) * walkMultiplier)
 					} else {
-						depTime, arrTime, okPrev := utils.FindPrevDepartureWithArr(edge.Schedules, currTime)
+						depTime, arrTime, okPrev := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
 						if !okPrev {
 							continue
 						}
@@ -1082,7 +1103,13 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
-	targetSec := uint32(route.Config.TargetTime.Hour()*3600 + route.Config.TargetTime.Minute()*60 + route.Config.TargetTime.Second())
+	targetTime := route.Config.TargetTime
+	if targetTime.IsZero() {
+		targetTime = time.Now()
+	}
+	activeServices := e.GetActiveServices(targetTime)
+
+	targetSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	startKey := stateKey{SID: toSID, lastRID: ""}
 	bestStates[startKey] = nodeState{
 		time:    targetSec,
@@ -1143,7 +1170,7 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 				prevTime = currTime - uint32(edge.Weight)
 				edgeCost = int(float64(edge.Weight) * walkMultiplier)
 			} else {
-				depTime, arrTime, okNext := utils.FindPrevDepartureWithArr(edge.Schedules, currTime)
+				depTime, arrTime, okNext := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
 				if !okNext {
 					continue
 				}

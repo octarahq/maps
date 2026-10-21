@@ -53,6 +53,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 	firstStop, lastStop types.Stop,
 	baseDate, targetTime time.Time,
 ) *types.ParsedTrip {
+	activeServices := e.GetActiveServices(targetTime)
 	startSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currentSec := startSec
 
@@ -191,7 +192,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 					leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
 				}
 
-				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec)
+				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec, activeServices)
 				if ok {
 					leg.DepartureTime = baseDate.Add(time.Duration(sched.Dep) * time.Second)
 					currentSec = sched.Arr
@@ -217,7 +218,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 			currentLeg.ToSID = edge.ToSID
 
 			if edge.RID != "" {
-				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec)
+				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec, activeServices)
 				if ok {
 					currentSec = sched.Arr
 				} else {
@@ -311,6 +312,7 @@ func (e *Engine) edgesToParsedTripArrival(
 	firstStop, lastStop types.Stop,
 	baseDate, targetTime time.Time,
 ) *types.ParsedTrip {
+	activeServices := e.GetActiveServices(targetTime)
 	targetArrSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currSec := targetArrSec
 
@@ -341,7 +343,7 @@ func (e *Engine) edgesToParsedTripArrival(
 			}
 			edgeDep[i] = currSec
 		} else {
-			depTime, arrTime, ok := utils.FindPrevDepartureWithArr(edge.Schedules, currSec)
+			depTime, arrTime, ok := utils.FindPrevDepartureWithArr(edge.Schedules, currSec, activeServices)
 			if ok {
 				edgeArr[i] = arrTime
 				edgeDep[i] = depTime

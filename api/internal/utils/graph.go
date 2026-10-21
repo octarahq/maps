@@ -8,7 +8,12 @@ import (
 	"maps/api/internal/types"
 )
 
-func BuildGraph(net *types.Network) types.GraphType {
+func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType {
+	var ci *CalendarIndex
+	if len(calIndex) > 0 {
+		ci = calIndex[0]
+	}
+
 	graph := make(types.GraphType)
 	trips := IndexTripsByID(net.Trips)
 
@@ -30,6 +35,11 @@ func BuildGraph(net *types.Network) types.GraphType {
 			trip := trips[curr.TID]
 			rid := trip.RID
 
+			var serviceID uint16
+			if ci != nil && trip.ServiceID != "" {
+				serviceID = ci.GetOrRegisterService(trip.ServiceID)
+			}
+
 			diff := int(curr.ATime) - int(prev.DTime)
 			if diff <= 0 {
 				diff = 30
@@ -47,7 +57,7 @@ func BuildGraph(net *types.Network) types.GraphType {
 					BikesAllowed: trip.BikesAllowed,
 					Weight:       diff,
 					Schedules: []types.DepartureTime{
-						{Dep: uint32(prev.DTime), Arr: uint32(curr.ATime)},
+						{Dep: uint32(prev.DTime), Arr: uint32(curr.ATime), ServiceID: serviceID},
 					},
 				}
 				graph[prev.SId] = append(graph[prev.SId], edge)
@@ -64,8 +74,9 @@ func BuildGraph(net *types.Network) types.GraphType {
 					pEdge.BikesAllowed = trip.BikesAllowed
 				}
 				pEdge.Schedules = append(pEdge.Schedules, types.DepartureTime{
-					Dep: uint32(prev.DTime),
-					Arr: uint32(curr.ATime),
+					Dep:       uint32(prev.DTime),
+					Arr:       uint32(curr.ATime),
+					ServiceID: serviceID,
 				})
 			}
 		}

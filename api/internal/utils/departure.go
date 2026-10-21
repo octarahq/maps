@@ -6,27 +6,61 @@ import (
 	"slices"
 )
 
-func FindNextDeparture(schedules []types.DepartureTime, currSec uint32) (types.DepartureTime, bool) {
+func FindNextDeparture(schedules []types.DepartureTime, currSec uint32, activeServices ...[]bool) (types.DepartureTime, bool) {
 	idx, _ := slices.BinarySearchFunc(schedules, currSec, func(s types.DepartureTime, target uint32) int {
 		return cmp.Compare(s.Dep, target)
 	})
-	if idx < len(schedules) {
-		return schedules[idx], true
+
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+
+	if len(active) == 0 {
+		if idx < len(schedules) {
+			return schedules[idx], true
+		}
+		return types.DepartureTime{}, false
+	}
+
+	for idx < len(schedules) {
+		s := schedules[idx]
+		if int(s.ServiceID) < len(active) && active[s.ServiceID] {
+			return s, true
+		}
+		idx++
 	}
 	return types.DepartureTime{}, false
 }
 
-func FindNextDepartureWithDep(schedules []types.DepartureTime, currSec uint32) (uint32, uint32, bool) {
+func FindNextDepartureWithDep(schedules []types.DepartureTime, currSec uint32, activeServices ...[]bool) (uint32, uint32, bool) {
 	idx, _ := slices.BinarySearchFunc(schedules, currSec, func(s types.DepartureTime, target uint32) int {
 		return cmp.Compare(s.Dep, target)
 	})
-	if idx < len(schedules) {
-		return schedules[idx].Dep, schedules[idx].Arr, true
+
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+
+	if len(active) == 0 {
+		if idx < len(schedules) {
+			return schedules[idx].Dep, schedules[idx].Arr, true
+		}
+		return 0, 0, false
+	}
+
+	for idx < len(schedules) {
+		s := schedules[idx]
+		if int(s.ServiceID) < len(active) && active[s.ServiceID] {
+			return s.Dep, s.Arr, true
+		}
+		idx++
 	}
 	return 0, 0, false
 }
 
-func FindPrevDeparture(schedules []types.DepartureTime, currSec uint32) (types.DepartureTime, bool) {
+func FindPrevDeparture(schedules []types.DepartureTime, currSec uint32, activeServices ...[]bool) (types.DepartureTime, bool) {
 	if len(schedules) == 0 {
 		return types.DepartureTime{}, false
 	}
@@ -44,13 +78,30 @@ func FindPrevDeparture(schedules []types.DepartureTime, currSec uint32) (types.D
 		}
 	}
 
-	if bestIdx != -1 {
+	if bestIdx == -1 {
+		return types.DepartureTime{}, false
+	}
+
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+
+	if len(active) == 0 {
 		return schedules[bestIdx], true
+	}
+
+	for bestIdx >= 0 {
+		s := schedules[bestIdx]
+		if int(s.ServiceID) < len(active) && active[s.ServiceID] {
+			return s, true
+		}
+		bestIdx--
 	}
 	return types.DepartureTime{}, false
 }
 
-func FindPrevDepartureWithArr(schedules []types.DepartureTime, currSec uint32) (uint32, uint32, bool) {
+func FindPrevDepartureWithArr(schedules []types.DepartureTime, currSec uint32, activeServices ...[]bool) (uint32, uint32, bool) {
 	if len(schedules) == 0 {
 		return 0, 0, false
 	}
@@ -68,8 +119,25 @@ func FindPrevDepartureWithArr(schedules []types.DepartureTime, currSec uint32) (
 		}
 	}
 
-	if bestIdx != -1 {
+	if bestIdx == -1 {
+		return 0, 0, false
+	}
+
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+
+	if len(active) == 0 {
 		return schedules[bestIdx].Dep, schedules[bestIdx].Arr, true
+	}
+
+	for bestIdx >= 0 {
+		s := schedules[bestIdx]
+		if int(s.ServiceID) < len(active) && active[s.ServiceID] {
+			return s.Dep, s.Arr, true
+		}
+		bestIdx--
 	}
 	return 0, 0, false
 }

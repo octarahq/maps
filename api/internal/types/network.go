@@ -151,6 +151,7 @@ type Route struct {
 
 type Trip struct {
 	RID          string        `csv:"route_id"`
+	ServiceID    string        `csv:"service_id"`
 	TID          string        `csv:"trip_id"`
 	Headsign     string        `csv:"trip_headsign"`
 	SName        string        `csv:"trip_short_name"`

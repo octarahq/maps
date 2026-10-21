@@ -1,8 +1,9 @@
 package types
 
 type DepartureTime struct {
-	Dep uint32
-	Arr uint32
+	Dep       uint32
+	Arr       uint32
+	ServiceID uint16
 }
 
 type Edge struct {
