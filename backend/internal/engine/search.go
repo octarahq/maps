@@ -100,7 +100,7 @@ func (e *Engine) SearchStopsByName(query string) []types.Stop {
 
 func (e *Engine) SearchStopById(query string) (types.Stop, bool) {
 	for _, stop := range e.Net.Stops {
-		if stop.SID == query {
+		if utils.IdRemoveIDFMPrefix(stop.SID) == utils.IdRemoveIDFMPrefix(query) {
 			return stop, true
 		}
 	}

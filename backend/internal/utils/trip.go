@@ -56,16 +56,16 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 				distStr = fmt.Sprintf(", %.2f km", leg.DistanceKm)
 			}
 			fmt.Printf(" [%s] walk (%d min%s)\n", legDep, legDur, distStr)
-			fmt.Printf("        └─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
-			fmt.Printf("        └─ to   : %s (wheelchair: %t, bikes: %t)\n", leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ from : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.FromStopName, leg.FromSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ to   : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.ToStopName, leg.ToSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		case types.LegTypeBike:
 			distStr := ""
 			if leg.DistanceKm > 0 {
 				distStr = fmt.Sprintf(", %.2f km @ 15 km/h", leg.DistanceKm)
 			}
 			fmt.Printf(" [%s] bike (%d min%s)\n", legDep, legDur, distStr)
-			fmt.Printf("        └─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
-			fmt.Printf("        └─ to   : %s (wheelchair: %t, bikes: %t)\n", leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ from : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.FromStopName, leg.FromSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        └─ to   : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.ToStopName, leg.ToSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		case types.LegTypeTransit:
 			lineName := leg.Route.ShortName
 			if lineName == "" {
@@ -78,19 +78,19 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 			}
 
 			fmt.Printf(" [%s] Line %s%s (%d min)\n", legDep, lineName, headsign, legDur)
-			fmt.Printf("        ├─ from : %s (wheelchair: %t, bikes: %t)\n", leg.FromStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf("        ├─ from : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.FromStopName, leg.FromSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 
 			stopCount := len(leg.IntermediateStops)
 			if stopCount > 0 {
 				fmt.Printf("        │  (%d stops)\n", stopCount)
 			}
 			pit := leg.PositionInTrain
-			fmt.Println(pit)
+
 			if pit.NbWagons > 0 {
 				fmt.Printf("        │  (pos in train %d/%d) avg %d\n", int(pit.Wagon), int(pit.NbWagons), int(pit.PosAvg))
 			}
 
-			fmt.Printf(" [%s] └─ to   : %s (wheelchair: %t, bikes: %t)\n", legArr, leg.ToStopName, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
+			fmt.Printf(" [%s] └─ to   : %s (%s) (wheelchair: %t, bikes: %t)\n", legArr, leg.ToStopName, leg.ToSID, IsAccessible(leg.Wheelchair), IsAccessible(leg.BikesAllowed))
 		}
 
 		if i < len(trip.Legs)-1 {
