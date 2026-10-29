@@ -270,9 +270,9 @@ func buildExtraData(path string) io.Reader {
 	return pr
 }
 
-func buildExtra(path string) io.Reader {
-	return buildExtraData(path)
-}
+// func buildExtra(path string) io.Reader {
+// 	return buildExtraData(path)
+// }
 
 func parseCSV[T any](separator rune, data io.Reader) ([]T, error) {
 	reader := csv.NewReader(data)
