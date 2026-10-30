@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"maps/backend/internal/types"
+	"maps/backend/internal/utils"
 )
 
 var DataUrls = []struct {
@@ -46,23 +47,31 @@ var DataUrls = []struct {
 }
 
 func main() {
-	for _, d := range DataUrls {
-		if d.Name == "" || d.Url == "" {
-			fmt.Println("skip missing data")
-			continue
-		}
-		fmt.Println(d.Name)
-		res := fetchData(d.Url)
-		var path string = fmt.Sprintf("data/raw/%s", d.Name)
-		if d.Path != "" {
-			path = d.Path
-		}
+	skipFetch := false
+	if len(os.Args) > 1 && (os.Args[1] == "--skip-fetch") {
+		skipFetch = true
+		fmt.Println("skiping download")
+	}
 
-		switch d.FileType {
-		case "zip":
-			fmt.Print(saveAndExtractZip(res, "data/raw"))
-		default:
-			fmt.Print(saveData(res, path))
+	if !skipFetch {
+		for _, d := range DataUrls {
+			if d.Name == "" || d.Url == "" {
+				fmt.Println("skip missing data")
+				continue
+			}
+			fmt.Println(d.Name)
+			res := fetchData(d.Url)
+			var path string = fmt.Sprintf("data/raw/%s", d.Name)
+			if d.Path != "" {
+				path = d.Path
+			}
+
+			switch d.FileType {
+			case "zip":
+				fmt.Print(saveAndExtractZip(res, "data/raw"))
+			default:
+				fmt.Print(saveData(res, path))
+			}
 		}
 	}
 
@@ -171,6 +180,8 @@ func buildNetWork(path string) io.Reader {
 			ParentsStations:  parents,
 			PositionsInTrain: positions,
 		}
+
+		utils.EnrichParentsStations(&net)
 
 		enc := gob.NewEncoder(pw)
 		if err := enc.Encode(net); err != nil {

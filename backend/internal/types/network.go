@@ -176,9 +176,20 @@ type Transfer struct {
 }
 
 type ParentsStation struct {
-	PID   string     `csv:"zdcid"`
-	Name  string     `csv:"zdcname"`
-	PType ParentType `csv:"zdctype"`
+	PID           string                `csv:"zdcid" json:"id"`
+	Name          string                `csv:"zdcname" json:"name"`
+	PType         ParentType            `csv:"zdctype" json:"type"`
+	Lat           float64               `json:"lat"`
+	Lon           float64               `json:"lon"`
+	ChildrenStops []string              `json:"children_stops,omitempty"`
+	Routes        []ParentsStationRoute `json:"routes,omitempty"`
+}
+
+type ParentsStationRoute struct {
+	RID   string    `json:"id"`
+	Name  string    `json:"name"`
+	Color string    `json:"color"`
+	RType RouteType `json:"type"`
 }
 
 type PositionInTrain struct {

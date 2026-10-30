@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"cmp"
 	"encoding/gob"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"maps/backend/internal/types"
 )
@@ -96,3 +99,135 @@ func IndexPositionInTrainsByTripKey(positionInTrain []types.PositionInTrain) map
 	}
 	return m
 }
+
+func EnrichParentsStations(net *types.Network) {
+	if len(net.ParentsStations) == 0 {
+		return
+	}
+
+	childrenByParent := make(map[string][]types.Stop, len(net.ParentsStations))
+	stopsByCleanID := make(map[string]types.Stop, len(net.Stops))
+	stopIDToParentID := make(map[string]string, len(net.Stops))
+
+	for _, s := range net.Stops {
+		cleanSID := IdRemoveIDFMPrefix(s.SID)
+		stopsByCleanID[cleanSID] = s
+
+		cleanPID := IdRemoveIDFMPrefix(s.ParentStation)
+		if cleanPID != "" {
+			childrenByParent[cleanPID] = append(childrenByParent[cleanPID], s)
+			stopIDToParentID[s.SID] = cleanPID
+			stopIDToParentID[cleanSID] = cleanPID
+		} else {
+			stopIDToParentID[s.SID] = cleanSID
+			stopIDToParentID[cleanSID] = cleanSID
+		}
+	}
+
+	tripToRoute := make(map[string]string, len(net.Trips))
+	for _, t := range net.Trips {
+		tripToRoute[t.TID] = t.RID
+	}
+
+	parentRouteIDs := make(map[string]map[string]struct{}, len(net.ParentsStations))
+	for _, st := range net.StopTimes {
+		pID, ok := stopIDToParentID[st.SId]
+		if !ok {
+			continue
+		}
+		rID, ok := tripToRoute[st.TID]
+		if !ok || rID == "" {
+			continue
+		}
+		routesSet := parentRouteIDs[pID]
+		if routesSet == nil {
+			routesSet = make(map[string]struct{})
+			parentRouteIDs[pID] = routesSet
+		}
+		routesSet[rID] = struct{}{}
+	}
+
+	routesByID := IndexRoutesByID(net.Routes)
+
+	for i := range net.ParentsStations {
+		p := &net.ParentsStations[i]
+		cleanPID := IdRemoveIDFMPrefix(p.PID)
+		children := childrenByParent[cleanPID]
+
+		if len(children) > 0 {
+			p.ChildrenStops = make([]string, 0, len(children))
+			for _, c := range children {
+				p.ChildrenStops = append(p.ChildrenStops, c.SID)
+			}
+		}
+
+		switch len(children) {
+		case 0:
+			if st, ok := stopsByCleanID[cleanPID]; ok {
+				p.Lat = st.Lat
+				p.Lon = st.Long
+			}
+		case 1:
+			p.Lat = children[0].Lat
+			p.Lon = children[0].Long
+		case 2:
+			d := CoordsGetDistance(children[0].Long, children[0].Lat, children[1].Long, children[1].Lat)
+			if d <= 0.030 {
+				p.Lat = (children[0].Lat + children[1].Lat) / 2.0
+				p.Lon = (children[0].Long + children[1].Long) / 2.0
+			} else {
+				p.Lat = children[0].Lat
+				p.Lon = children[0].Long
+			}
+		default:
+			var sumLat, sumLon float64
+			for _, c := range children {
+				sumLat += c.Lat
+				sumLon += c.Long
+			}
+			p.Lat = sumLat / float64(len(children))
+			p.Lon = sumLon / float64(len(children))
+		}
+
+		rIDs := parentRouteIDs[cleanPID]
+		if len(rIDs) > 0 {
+			type routeKey struct {
+				name  string
+				rtype types.RouteType
+			}
+			seenRoutes := make(map[routeKey]bool)
+			p.Routes = make([]types.ParentsStationRoute, 0, len(rIDs))
+
+			for rID := range rIDs {
+				r, ok := routesByID[rID]
+				if !ok {
+					continue
+				}
+				name := r.SName
+				if name == "" {
+					name = r.LName
+				}
+				key := routeKey{name: name, rtype: r.RType}
+				if seenRoutes[key] {
+					continue
+				}
+				seenRoutes[key] = true
+
+				p.Routes = append(p.Routes, types.ParentsStationRoute{
+					RID:   r.RID,
+					Name:  name,
+					Color: r.Color,
+					RType: r.RType,
+				})
+			}
+
+			slices.SortFunc(p.Routes, func(a, b types.ParentsStationRoute) int {
+				if a.RType != b.RType {
+					return cmp.Compare(a.RType, b.RType)
+				}
+				return strings.Compare(a.Name, b.Name)
+			})
+		}
+	}
+}
+

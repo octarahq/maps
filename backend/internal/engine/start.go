@@ -24,6 +24,10 @@ func StartEngine() Engine {
 	}
 	e.Net = *net
 
+	if len(e.Net.ParentsStations) > 0 && e.Net.ParentsStations[0].Lat == 0 && e.Net.ParentsStations[0].Lon == 0 {
+		utils.EnrichParentsStations(&e.Net)
+	}
+
 	extra, err := utils.LoadExtra()
 	if err == nil && extra != nil {
 		e.Extras = *extra
