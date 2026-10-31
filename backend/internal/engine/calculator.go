@@ -190,9 +190,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 					continue
 				}
 
-				pID := s.ParentStation
+				pID := utils.IdRemoveIDFMPrefix(s.ParentStation)
 				if pID == "" {
-					pID = s.SID
+					pID = utils.IdRemoveIDFMPrefix(s.SID)
 				}
 				if seenDepParents[pID] {
 					continue
@@ -468,7 +468,9 @@ func (e *Engine) CalculateRouteStopToStop(fromSID, toSID string, route types.Rou
 }
 
 func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string, route types.RoutesToCalculateType) ([]types.Edge, error) {
-	if fromSID == toSID {
+	cleanFromSID := utils.IdRemoveIDFMPrefix(fromSID)
+	cleanToSID := utils.IdRemoveIDFMPrefix(toSID)
+	if fromSID == toSID || cleanFromSID == cleanToSID {
 		return []types.Edge{}, nil
 	}
 
@@ -478,6 +480,14 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 
 	if route.Config.TimeType != types.TimeTypeDeparture {
 		return []types.Edge{}, fmt.Errorf("not implemented")
+	}
+
+	if len(e.Graph[fromSID]) == 0 {
+		if len(e.Graph["IDFM:"+cleanFromSID]) > 0 {
+			fromSID = "IDFM:" + cleanFromSID
+		} else if len(e.Graph[cleanFromSID]) > 0 {
+			fromSID = cleanFromSID
+		}
 	}
 
 	type stateKey struct {
@@ -533,7 +543,7 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 		current, _ := queue.Pop()
 		currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
 
-		if current.SID == toSID {
+		if current.SID == toSID || utils.IdRemoveIDFMPrefix(current.SID) == cleanToSID {
 			found = true
 			destKey = currKey
 			break
@@ -799,9 +809,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 					continue
 				}
 
-				pID := s.ParentStation
+				pID := utils.IdRemoveIDFMPrefix(s.ParentStation)
 				if pID == "" {
-					pID = s.SID
+					pID = utils.IdRemoveIDFMPrefix(s.SID)
 				}
 				if seenDepParents[pID] {
 					continue
@@ -1075,8 +1085,18 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 }
 
 func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, route types.RoutesToCalculateType) ([]types.Edge, error) {
-	if fromSID == toSID {
+	cleanFromSID := utils.IdRemoveIDFMPrefix(fromSID)
+	cleanToSID := utils.IdRemoveIDFMPrefix(toSID)
+	if fromSID == toSID || cleanFromSID == cleanToSID {
 		return []types.Edge{}, nil
+	}
+
+	if len(e.ReverseGraph[toSID]) == 0 {
+		if len(e.ReverseGraph["IDFM:"+cleanToSID]) > 0 {
+			toSID = "IDFM:" + cleanToSID
+		} else if len(e.ReverseGraph[cleanToSID]) > 0 {
+			toSID = cleanToSID
+		}
 	}
 
 	type stateKey struct {
@@ -1134,7 +1154,7 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 		current, _ := queue.Pop()
 		currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
 
-		if current.SID == fromSID {
+		if current.SID == fromSID || utils.IdRemoveIDFMPrefix(current.SID) == cleanFromSID {
 			found = true
 			originKey = currKey
 			break

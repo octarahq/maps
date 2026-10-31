@@ -54,24 +54,37 @@ func LoadExtra(path ...string) (*types.ExtraData, error) {
 }
 
 func IndexStopsByID(stops []types.Stop) map[string]types.Stop {
-	m := make(map[string]types.Stop, len(stops))
+	m := make(map[string]types.Stop, len(stops)*2)
 	for _, s := range stops {
 		m[s.SID] = s
+		clean := IdRemoveIDFMPrefix(s.SID)
+		if clean != s.SID {
+			m[clean] = s
+		}
 	}
 	return m
 }
+
 func IndexRoutesByID(routes []types.Route) map[string]types.Route {
-	m := make(map[string]types.Route, len(routes))
+	m := make(map[string]types.Route, len(routes)*2)
 	for _, r := range routes {
 		m[r.RID] = r
+		clean := IdRemoveIDFMPrefix(r.RID)
+		if clean != r.RID {
+			m[clean] = r
+		}
 	}
 	return m
 }
 
 func IndexTripsByID(trips []types.Trip) map[string]types.Trip {
-	m := make(map[string]types.Trip, len(trips))
+	m := make(map[string]types.Trip, len(trips)*2)
 	for _, t := range trips {
 		m[t.TID] = t
+		clean := IdRemoveIDFMPrefix(t.TID)
+		if clean != t.TID {
+			m[clean] = t
+		}
 	}
 	return m
 }
@@ -93,9 +106,14 @@ func IndexTransfersByFromStop(transfers []types.Transfer) map[string][]types.Tra
 }
 
 func IndexPositionInTrainsByTripKey(positionInTrain []types.PositionInTrain) map[string]types.PositionInTrain {
-	m := make(map[string]types.PositionInTrain)
+	m := make(map[string]types.PositionInTrain, len(positionInTrain))
 	for _, pit := range positionInTrain {
-		m[fmt.Sprintf("%s-%s;%s", pit.FromSID, pit.ToSID, pit.RID)] = pit
+		keyRaw := fmt.Sprintf("%s-%s;%s", pit.FromSID, pit.ToSID, pit.RID)
+		m[keyRaw] = pit
+		keyClean := fmt.Sprintf("%s-%s;%s", IdRemoveIDFMPrefix(pit.FromSID), IdRemoveIDFMPrefix(pit.ToSID), IdRemoveIDFMPrefix(pit.RID))
+		if keyClean != keyRaw {
+			m[keyClean] = pit
+		}
 	}
 	return m
 }
@@ -230,4 +248,3 @@ func EnrichParentsStations(net *types.Network) {
 		}
 	}
 }
-

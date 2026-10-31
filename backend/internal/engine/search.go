@@ -173,13 +173,36 @@ func (e *Engine) SearchStopsByName(query string) []types.Stop {
 }
 
 func (e *Engine) SearchStopById(query string) (types.Stop, bool) {
+	cleanQ := utils.IdRemoveIDFMPrefix(query)
 	for _, stop := range e.Net.Stops {
-		if utils.IdRemoveIDFMPrefix(stop.SID) == utils.IdRemoveIDFMPrefix(query) {
+		if stop.SID == query || utils.IdRemoveIDFMPrefix(stop.SID) == cleanQ {
 			return stop, true
 		}
 	}
 
+	for _, ps := range e.Net.ParentsStations {
+		if ps.PID == query || utils.IdRemoveIDFMPrefix(ps.PID) == cleanQ {
+			return types.Stop{
+				SID:        ps.PID,
+				Name:       ps.Name,
+				Lat:        ps.Lat,
+				Long:       ps.Lon,
+				WheelChair: types.AccessibilityYes,
+			}, true
+		}
+	}
+
 	return types.Stop{}, false
+}
+
+func (e *Engine) SearchParentsStopById(query string) (types.ParentsStation, bool) {
+	cleanQ := utils.IdRemoveIDFMPrefix(query)
+	for _, ps := range e.Net.ParentsStations {
+		if ps.PID == query || utils.IdRemoveIDFMPrefix(ps.PID) == cleanQ {
+			return ps, true
+		}
+	}
+	return types.ParentsStation{}, false
 }
 
 func (e *Engine) SearchStopsByNeerCord(lon, lat float64, maxK int) []types.Stop {
@@ -305,11 +328,13 @@ func (e *Engine) SearchArrivalStopsByCoord(lon, lat float64, maxDistanceKm float
 }
 
 func (e *Engine) StationStops() []types.Stop {
-	stationPIDs := make(map[string]bool, len(e.Net.ParentsStations)*2)
+	stationPIDs := make(map[string]bool, len(e.Net.ParentsStations)*3)
 	for _, ps := range e.Net.ParentsStations {
 		if ps.PType == types.ParentTypeRail || ps.PType == types.ParentTypeMetro || ps.PType == types.ParentTypeStreetTram {
+			clean := utils.IdRemoveIDFMPrefix(ps.PID)
+			stationPIDs[clean] = true
 			stationPIDs[ps.PID] = true
-			stationPIDs["IDFM:"+ps.PID] = true
+			stationPIDs["IDFM:"+clean] = true
 		}
 	}
 
@@ -322,7 +347,8 @@ func (e *Engine) StationStops() []types.Stop {
 		if pid == "" {
 			pid = s.SID
 		}
-		if stationPIDs[pid] {
+		cleanPID := utils.IdRemoveIDFMPrefix(pid)
+		if stationPIDs[pid] || stationPIDs[cleanPID] {
 			res = append(res, s)
 		}
 	}

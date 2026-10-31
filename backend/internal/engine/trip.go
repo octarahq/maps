@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+func (e *Engine) getStopFromIndex(sid string, stops map[string]types.Stop) types.Stop {
+	if s, ok := stops[sid]; ok && s.Name != "" {
+		return s
+	}
+	clean := utils.IdRemoveIDFMPrefix(sid)
+	if s, ok := stops[clean]; ok && s.Name != "" {
+		return s
+	}
+	if s, ok := e.SearchStopById(sid); ok && s.Name != "" {
+		return s
+	}
+	return types.Stop{SID: sid}
+}
+
 func (e *Engine) EdgesToParsedTrip(
 	edges []types.Edge,
 	lonFrom, latFrom, lonTo, latTo float64,
@@ -19,15 +33,8 @@ func (e *Engine) EdgesToParsedTrip(
 	stops := utils.IndexStopsByID(e.Net.Stops)
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
-	firstStop, okFirst := stops[edges[0].FromSID]
-	if !okFirst {
-		firstStop, _ = e.SearchStopById(edges[0].FromSID)
-	}
-
-	lastStop, okLast := stops[edges[len(edges)-1].ToSID]
-	if !okLast {
-		lastStop, _ = e.SearchStopById(edges[len(edges)-1].ToSID)
-	}
+	firstStop := e.getStopFromIndex(edges[0].FromSID, stops)
+	lastStop := e.getStopFromIndex(edges[len(edges)-1].ToSID, stops)
 
 	targetTime := config.TargetTime
 	if targetTime.IsZero() {
@@ -145,7 +152,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 						transferDep := baseDate.Add(time.Duration(currentSec) * time.Second)
 						transferArr := baseDate.Add(time.Duration(currentSec+transferSec) * time.Second)
 
-						fromStop := stops[edge.FromSID]
+						fromStop := e.getStopFromIndex(edge.FromSID, stops)
 						transferLeg := types.TripLeg{
 							Type:          types.LegTypeWalk,
 							FromSID:       edge.FromSID,
@@ -163,7 +170,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 				}
 			}
 
-			fromStop := stops[edge.FromSID]
+			fromStop := e.getStopFromIndex(edge.FromSID, stops)
 			leg := types.TripLeg{
 				Type:              legType,
 				FromSID:           edge.FromSID,
@@ -208,7 +215,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 
 			currentLeg = &leg
 		} else {
-			intermediateStop := stops[edge.FromSID]
+			intermediateStop := e.getStopFromIndex(edge.FromSID, stops)
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
 				SID:           intermediateStop.SID,
 				Name:          intermediateStop.Name,
@@ -237,7 +244,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 			}
 		}
 
-		toStop := stops[edge.ToSID]
+		toStop := e.getStopFromIndex(edge.ToSID, stops)
 		currentLeg.ToStopName = toStop.Name
 
 		if edge.Wheelchair == 0 {
@@ -473,7 +480,7 @@ func (e *Engine) edgesToParsedTripArrival(
 						tArr = tDep.Add(time.Duration(transferSec) * time.Second)
 					}
 
-					fromStop := stops[edge.FromSID]
+					fromStop := e.getStopFromIndex(edge.FromSID, stops)
 					transferLeg := types.TripLeg{
 						Type:          types.LegTypeWalk,
 						FromSID:       edge.FromSID,
@@ -489,7 +496,7 @@ func (e *Engine) edgesToParsedTripArrival(
 				}
 			}
 
-			fromStop := stops[edge.FromSID]
+			fromStop := e.getStopFromIndex(edge.FromSID, stops)
 			leg := types.TripLeg{
 				Type:              legType,
 				FromSID:           edge.FromSID,
@@ -524,7 +531,7 @@ func (e *Engine) edgesToParsedTripArrival(
 
 			currentLeg = &leg
 		} else {
-			intermediateStop := stops[edge.FromSID]
+			intermediateStop := e.getStopFromIndex(edge.FromSID, stops)
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
 				SID:           intermediateStop.SID,
 				Name:          intermediateStop.Name,
@@ -547,7 +554,7 @@ func (e *Engine) edgesToParsedTripArrival(
 			}
 		}
 
-		toStop := stops[edge.ToSID]
+		toStop := e.getStopFromIndex(edge.ToSID, stops)
 		currentLeg.ToStopName = toStop.Name
 
 		if edge.Wheelchair == 0 {
