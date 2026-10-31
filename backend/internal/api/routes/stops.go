@@ -133,4 +133,41 @@ func init() {
 			})
 		},
 	})
+
+	Register(ApiRoute{
+		Method: http.MethodGet,
+		Path:   "/stops/nearby",
+		Handler: func(c *gin.Context, e engine.Engine) {
+			sLat, sLon := c.Query("lat"), c.Query("lon")
+			if sLat == "" || sLon == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "need lat and lon query",
+				})
+				return
+			}
+
+			lat, err := strconv.ParseFloat(sLat, 64)
+			lon, err := strconv.ParseFloat(sLon, 64)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "bad coord format",
+				})
+				return
+			}
+
+			maxK := 10
+			if c.Query("max") != "" {
+				maxK, err = strconv.Atoi(c.Query("max"))
+				if err != nil {
+					maxK = 10
+				}
+			}
+
+			nStops := e.SearchStopsByNeerCord(lon, lat, maxK)
+
+			c.JSON(http.StatusOK, gin.H{
+				"stops": nStops,
+			})
+		},
+	})
 }
