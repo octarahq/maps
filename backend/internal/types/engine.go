@@ -34,7 +34,8 @@ type RoutesToCalculateType struct {
 }
 
 type DepartureInfo struct {
-	Route       string    `json:"route"`
+	RID         string    `json:"route_id"`
+	RName       string    `json:"route_name"`
 	RColor      string    `json:"color"`
 	RType       RouteType `json:"type"`
 	Headsign    string    `json:"headsign"`

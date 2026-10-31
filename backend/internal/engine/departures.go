@@ -79,7 +79,8 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 		}
 
 		results = append(results, types.DepartureInfo{
-			Route:       name,
+			RID:         route.RID,
+			RName:       name,
 			RColor:      route.Color,
 			RType:       route.RType,
 			Headsign:    edge.Headsign,
