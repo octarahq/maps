@@ -97,3 +97,60 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 
 	return results
 }
+
+func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map[string][]types.DepartureInfo {
+	if targetTime.IsZero() {
+		targetTime = time.Now()
+	}
+
+	activeServices := e.GetActiveServices(targetTime)
+	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
+	year, month, day := targetTime.Date()
+	baseDate := time.Date(year, month, day, 0, 0, 0, 0, targetTime.Location())
+	routes := utils.IndexRoutesByID(e.Net.Routes)
+	route := routes[rid]
+	name := route.SName
+	if name == "" {
+		name = route.LName
+	}
+
+	results := make(map[string][]types.DepartureInfo)
+	for stopID, edges := range e.Graph {
+		for _, edge := range edges {
+			if edge.RID != rid {
+				continue
+			}
+
+			sched, ok := utils.FindNextDeparture(edge.Schedules, currSec, activeServices)
+			if !ok {
+				continue
+			}
+
+			waitSec := int(sched.Dep) - int(currSec)
+			waitMin := float64(waitSec) / 60.0
+			if waitMin < 0 {
+				waitMin = 0
+			}
+
+			results[stopID] = append(results[stopID], types.DepartureInfo{
+				RID:         route.RID,
+				RName:       name,
+				RColor:      route.Color,
+				RType:       route.RType,
+				Headsign:    edge.Headsign,
+				DepSec:      int(sched.Dep),
+				Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),
+				TimeString:  fmt.Sprintf("%02d:%02d", sched.Dep/3600, (sched.Dep%3600)/60),
+				WaitMinutes: waitMin,
+			})
+		}
+	}
+
+	for stopID := range results {
+		sort.Slice(results[stopID], func(i, j int) bool {
+			return results[stopID][i].DepSec < results[stopID][j].DepSec
+		})
+	}
+
+	return results
+}
