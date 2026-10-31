@@ -32,3 +32,14 @@ type RoutesToCalculateType struct {
 		Transfers int
 	}
 }
+
+type DepartureInfo struct {
+	Route       string    `json:"route"`
+	RColor      string    `json:"color"`
+	RType       RouteType `json:"type"`
+	Headsign    string    `json:"headsign"`
+	DepSec      int       `json:"dep_sec"`
+	Time        time.Time `json:"time"`
+	TimeString  string    `json:"time_string"`
+	WaitMinutes float64   `json:"wait_minutes"`
+}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	"maps/backend/internal/engine"
 	"maps/backend/internal/types"
@@ -84,6 +85,51 @@ func init() {
 			c.JSON(http.StatusOK, gin.H{
 				"total": len(stops),
 				"stops": stops,
+			})
+		},
+	})
+
+	Register(ApiRoute{
+		Method: http.MethodGet,
+		Path:   "/stops/:sid",
+		Handler: func(c *gin.Context, e engine.Engine) {
+			sid := c.Param("sid")
+			stops := utils.IndexStopsByID(e.Net.Stops)
+
+			stop, ok := stops[sid]
+			if !ok {
+				stop, ok = stops[utils.IdRemoveIDFMPrefix(sid)]
+			}
+			if !ok {
+				stop, ok = e.SearchStopById(sid)
+			}
+			if !ok {
+				c.Status(http.StatusNotFound)
+				return
+			}
+
+			targetTime := time.Now()
+			if timeParam := c.Query("time"); timeParam != "" {
+				if t, err := time.Parse(time.RFC3339, timeParam); err == nil {
+					targetTime = t
+				} else if t, err := time.Parse("2006-01-02T15:04:05", timeParam); err == nil {
+					targetTime = t
+				} else if t, err := time.Parse("2006-01-02T15:04", timeParam); err == nil {
+					targetTime = t
+				} else if t, err := time.Parse("15:04", timeParam); err == nil {
+					now := time.Now()
+					targetTime = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location())
+				}
+			}
+
+			departures := e.GetNextDeparturesForStop(sid, targetTime)
+			if len(departures) == 0 && stop.ParentStation != "" {
+				departures = e.GetNextDeparturesForStop(stop.ParentStation, targetTime)
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"stop":       stop,
+				"departures": departures,
 			})
 		},
 	})
