@@ -11,3 +11,7 @@ run-api:
 
 data-build:
 	go run ./backend/cmd/builder/main.go --input ./data/raw --output ./data/processed/network.bin
+
+deploy:
+	go build -o maps ./backend/main.go
+	orion deploy

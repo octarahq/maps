@@ -1,6 +1,7 @@
 package api
 
 import (
+	"maps/backend/internal/api/pages"
 	"maps/backend/internal/api/routes"
 	"maps/backend/internal/engine"
 
@@ -12,6 +13,8 @@ func StartApi(engine engine.Engine) {
 	router := gin.Default()
 	router.Use(gin.Logger())
 	router.Use(cors.Default())
+
+	pages.Register(router, engine)
 
 	api := router.Group("/api")
 	{

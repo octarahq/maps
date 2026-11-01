@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"archive/zip"
@@ -44,6 +44,10 @@ var DataUrls = []struct {
 		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/stationnement-velo-en-ile-de-france/exports/csv",
 		FileType: "csv",
 	},
+}
+
+func RunFetchData() {
+	main()
 }
 
 func main() {

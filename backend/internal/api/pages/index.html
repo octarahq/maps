@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transit Planner</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: sans-serif;
+        font-size: 13px;
+        color: #111;
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+      #sidebar {
+        width: 380px;
+        min-width: 340px;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 12px;
+        border-right: 1px solid #ccc;
+        background: #fff;
+      }
+      #map {
+        flex: 1;
+        height: 100vh;
+      }
+      h2 {
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+      .field {
+        margin-bottom: 8px;
+        position: relative;
+      }
+      label {
+        display: block;
+        font-weight: bold;
+        font-size: 11px;
+        margin-bottom: 2px;
+        color: #444;
+      }
+      input[type="text"],
+      input[type="time"],
+      input[type="date"],
+      select {
+        width: 100%;
+        padding: 5px 6px;
+        border: 1px solid #aaa;
+        font-size: 12px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .row > * {
+        flex: 1;
+      }
+      button {
+        padding: 5px 10px;
+        border: 1px solid #888;
+        background: #f0f0f0;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      button:hover {
+        background: #e0e0e0;
+      }
+      button.primary {
+        background: #005fb8;
+        color: #fff;
+        border-color: #004c99;
+        font-weight: bold;
+        width: 100%;
+        padding: 7px;
+        margin-top: 6px;
+      }
+      button.primary:hover {
+        background: #004c99;
+      }
+      .suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid #888;
+        max-height: 160px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+      }
+      .suggestion-item {
+        padding: 5px 8px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+        font-size: 12px;
+      }
+      .suggestion-item:hover {
+        background: #eef;
+      }
+      .suggestion-item small {
+        color: #666;
+        display: block;
+        font-size: 10px;
+      }
+      .presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 6px 0;
+      }
+      .preset-btn {
+        font-size: 11px;
+        padding: 2px 5px;
+        background: #fff;
+        border: 1px solid #ccc;
+      }
+      #status {
+        font-size: 12px;
+        color: #666;
+        margin: 6px 0;
+      }
+      .tabs {
+        display: flex;
+        gap: 2px;
+        margin: 10px 0 6px 0;
+        border-bottom: 1px solid #ccc;
+      }
+      .tab {
+        padding: 5px 8px;
+        background: #eee;
+        border: 1px solid #ccc;
+        border-bottom: none;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .tab.active {
+        background: #fff;
+        font-weight: bold;
+        border-bottom: 1px solid #fff;
+        margin-bottom: -1px;
+      }
+      .trip-summary {
+        padding: 6px 0;
+        border-bottom: 1px solid #ccc;
+        margin-bottom: 6px;
+        font-size: 12px;
+      }
+      .leg {
+        padding: 6px 0;
+        border-bottom: 1px solid #eee;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .leg-title {
+        font-weight: bold;
+        margin-bottom: 2px;
+      }
+      .line-tag {
+        display: inline-block;
+        padding: 1px 4px;
+        font-weight: bold;
+        font-size: 11px;
+        margin-right: 4px;
+      }
+      .pit {
+        color: #006600;
+        font-weight: bold;
+        margin: 2px 0;
+      }
+      .blocked {
+        color: #cc0000;
+        font-weight: bold;
+      }
+      details {
+        margin: 4px 0;
+      }
+      details summary {
+        cursor: pointer;
+        color: #005fb8;
+        font-size: 11px;
+      }
+      ul.stops {
+        list-style: none;
+        padding-left: 8px;
+        margin: 4px 0;
+        border-left: 2px solid #ddd;
+      }
+      ul.stops li {
+        padding: 1px 0;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sidebar">
+      <h2>Transit Planner</h2>
+
+      <div class="field">
+        <label for="fromInput">From</label>
+        <div class="row">
+          <input
+            type="text"
+            id="fromInput"
+            placeholder="Station name or click on map..."
+            autocomplete="off"
+          />
+          <button id="swapBtn" style="flex: 0 0 50px" title="Swap from and to">
+            Swap
+          </button>
+        </div>
+        <div id="fromSuggestions" class="suggestions"></div>
+        <input type="hidden" id="fromVal" />
+      </div>
+
+      <div class="field">
+        <label for="toInput">To</label>
+        <input
+          type="text"
+          id="toInput"
+          placeholder="Station name or click on map..."
+          autocomplete="off"
+        />
+        <div id="toSuggestions" class="suggestions"></div>
+        <input type="hidden" id="toVal" />
+      </div>
+
+      <div class="row" style="margin-bottom: 8px">
+        <div class="field" style="margin-bottom: 0">
+          <label for="timeType">Type</label>
+          <select id="timeType">
+            <option value="departure">Departure at</option>
+            <option value="arrival">Arrival at</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom: 0">
+          <label for="timeInput">Time</label>
+          <input type="time" id="timeInput" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="dateInput">Date</label>
+        <input type="date" id="dateInput" />
+      </div>
+
+      <button id="searchBtn" class="primary">Search</button>
+
+      <div id="status"></div>
+
+      <div id="results" style="display: none">
+        <div class="tabs" id="routeTabs"></div>
+        <div id="tripDetails"></div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+      const map = L.map("map").setView([48.8566, 2.3522], 12);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "Map data &copy; OpenStreetMap",
+      }).addTo(map);
+
+      const routesLayer = L.featureGroup().addTo(map);
+      const markersLayer = L.featureGroup().addTo(map);
+
+      const now = new Date();
+      document.getElementById("timeInput").value = now
+        .toTimeString()
+        .substring(0, 5);
+      document.getElementById("dateInput").value = now
+        .toISOString()
+        .substring(0, 10);
+
+      function setupAutocomplete(inputId, hiddenId, listId) {
+        const input = document.getElementById(inputId);
+        const hidden = document.getElementById(hiddenId);
+        const list = document.getElementById(listId);
+        let timer = null;
+
+        input.addEventListener("input", () => {
+          hidden.value = input.value;
+          clearTimeout(timer);
+          const q = input.value.trim();
+          if (q.length < 2) {
+            list.style.display = "none";
+            return;
+          }
+          timer = setTimeout(async () => {
+            try {
+              const res = await fetch(
+                "/api/stops/autocomplete?q=" + encodeURIComponent(q),
+              );
+              const data = await res.json();
+              const stops = data.stops || [];
+              if (stops.length === 0) {
+                list.style.display = "none";
+                return;
+              }
+              list.innerHTML = "";
+              stops.slice(0, 10).forEach((s) => {
+                const div = document.createElement("div");
+                div.className = "suggestion-item";
+                div.innerHTML =
+                  "<div>" + s.name + "</div><small>ID: " + s.id + "</small>";
+                div.onclick = () => {
+                  input.value = s.name;
+                  hidden.value = s.id;
+                  list.style.display = "none";
+                };
+                list.appendChild(div);
+              });
+              list.style.display = "block";
+            } catch (e) {
+              console.error(e);
+            }
+          }, 250);
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!input.contains(e.target) && !list.contains(e.target)) {
+            list.style.display = "none";
+          }
+        });
+      }
+
+      setupAutocomplete("fromInput", "fromVal", "fromSuggestions");
+      setupAutocomplete("toInput", "toVal", "toSuggestions");
+
+      document.getElementById("swapBtn").onclick = () => {
+        const fIn = document.getElementById("fromInput");
+        const tIn = document.getElementById("toInput");
+        const fVal = document.getElementById("fromVal");
+        const tVal = document.getElementById("toVal");
+
+        const tmpIn = fIn.value;
+        fIn.value = tIn.value;
+        tIn.value = tmpIn;
+        const tmpVal = fVal.value;
+        fVal.value = tVal.value;
+        tVal.value = tmpVal;
+      };
+
+      window.setPreset = (fromId, fromName, toId, toName, timeStr) => {
+        document.getElementById("fromInput").value = fromName;
+        document.getElementById("fromVal").value = fromId;
+        document.getElementById("toInput").value = toName;
+        document.getElementById("toVal").value = toId;
+        if (timeStr) document.getElementById("timeInput").value = timeStr;
+        doSearch();
+      };
+
+      map.on("click", (e) => {
+        const lat = e.latlng.lat.toFixed(5);
+        const lon = e.latlng.lng.toFixed(5);
+        L.popup()
+          .setLatLng(e.latlng)
+          .setContent(
+            `
+          <div style="font-size:12px;">
+            <b>Point (${lat}, ${lon})</b><br/>
+            <button style="margin-top:4px;" onclick="setPoint('from', ${lat}, ${lon})">Set as From</button>
+            <button style="margin-top:4px;" onclick="setPoint('to', ${lat}, ${lon})">Set as To</button>
+          </div>
+        `,
+          )
+          .openOn(map);
+      });
+
+      window.setPoint = (type, lat, lon) => {
+        map.closePopup();
+        const inEl = document.getElementById(type + "Input");
+        const valEl = document.getElementById(type + "Val");
+        inEl.value = `${lat}, ${lon}`;
+        valEl.value = `${lat},${lon}`;
+      };
+
+      document.getElementById("searchBtn").onclick = doSearch;
+
+      let currentJourney = null;
+
+      async function doSearch() {
+        const from =
+          document.getElementById("fromVal").value ||
+          document.getElementById("fromInput").value.trim();
+        const to =
+          document.getElementById("toVal").value ||
+          document.getElementById("toInput").value.trim();
+        const timeVal = document.getElementById("timeInput").value;
+        const dateVal = document.getElementById("dateInput").value;
+        const timeType = document.getElementById("timeType").value;
+
+        if (!from || !to) {
+          alert("Please specify both origin and destination.");
+          return;
+        }
+
+        const statusEl = document.getElementById("status");
+        const resultsEl = document.getElementById("results");
+        statusEl.textContent = "Searching route...";
+        resultsEl.style.display = "none";
+
+        let timeParam = "";
+        if (dateVal && timeVal) {
+          timeParam = `&${timeType}time=${dateVal}T${timeVal}:00`;
+        } else if (timeVal) {
+          timeParam = `&${timeType}time=${timeVal}:00`;
+        }
+
+        try {
+          const url = `/api/transit/journey?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${timeParam}`;
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (!res.ok || data.error) {
+            statusEl.textContent =
+              "Error: " + (data.error || "Failed to calculate journey");
+            return;
+          }
+
+          currentJourney = data.journey || {};
+          const keys = Object.keys(currentJourney).filter(
+            (k) => currentJourney[k],
+          );
+          if (keys.length === 0) {
+            statusEl.textContent = "No route found for these parameters.";
+            return;
+          }
+
+          statusEl.textContent = "";
+          resultsEl.style.display = "block";
+          renderTabs(keys);
+          selectRoute(keys.includes("fastest") ? "fastest" : keys[0]);
+        } catch (err) {
+          statusEl.textContent = "Network error: " + err.message;
+        }
+      }
+
+      const tabLabels = {
+        fastest: "Fastest",
+        comfort: "Comfort",
+        least_walk: "Least walk",
+        nearest_station: "Nearest station",
+      };
+
+      function renderTabs(keys) {
+        const tabsEl = document.getElementById("routeTabs");
+        tabsEl.innerHTML = "";
+        keys.forEach((key) => {
+          const btn = document.createElement("button");
+          btn.className = "tab";
+          btn.id = "tab-" + key;
+          btn.textContent = tabLabels[key] || key;
+          btn.onclick = () => selectRoute(key);
+          tabsEl.appendChild(btn);
+        });
+      }
+
+      function selectRoute(key) {
+        document
+          .querySelectorAll(".tab")
+          .forEach((t) => t.classList.remove("active"));
+        const activeTab = document.getElementById("tab-" + key);
+        if (activeTab) activeTab.classList.add("active");
+
+        const trip = currentJourney[key];
+        if (!trip) return;
+
+        renderTripDetails(trip);
+        renderMap(trip);
+      }
+
+      function formatTime(isoStr) {
+        if (!isoStr) return "";
+        const d = new Date(isoStr);
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function posAvgName(v) {
+        switch (v) {
+          case 1:
+            return "front";
+          case 2:
+            return "middle";
+          case 3:
+            return "back";
+          default:
+            return "";
+        }
+      }
+
+      function renderTripDetails(trip) {
+        const container = document.getElementById("tripDetails");
+        const depTime = formatTime(trip.departure_time);
+        const arrTime = formatTime(trip.arrival_time);
+        const durMin = Math.round(trip.duration_sec / 60);
+        const walkMin = Math.round((trip.walking_duration_sec || 0) / 60);
+        const transfers = trip.transfers_count || 0;
+
+        let html = `
+        <div class="trip-summary">
+          <div><b>${durMin} min</b> (${depTime} -> ${arrTime})</div>
+          <div style="color:#555;">${transfers} transfer(s) - ${walkMin} min walk</div>
+        </div>
+        <div class="legs">
+      `;
+
+        (trip.legs || []).forEach((leg) => {
+          const legDep = formatTime(leg.departure_time);
+          const legArr = formatTime(leg.arrival_time);
+          const legDur = Math.round(leg.duration_sec / 60);
+
+          if (leg.type === 0) {
+            const distM = leg.distance_km
+              ? Math.round(leg.distance_km * 1000) + " m"
+              : "";
+            html += `
+            <div class="leg">
+              <div class="leg-title">Walk (${legDur} min${distM ? ", " + distM : ""})</div>
+              <div>[${legDep}] ${leg.from_stop_name || "Start"}</div>
+              <div>[${legArr}] ${leg.to_stop_name || "Destination"}</div>
+            </div>
+          `;
+          } else if (leg.type === 2) {
+            const distKm = leg.distance_km
+              ? leg.distance_km.toFixed(1) + " km"
+              : "";
+            html += `
+            <div class="leg">
+              <div class="leg-title">Bike (${legDur} min${distKm ? ", " + distKm : ""})</div>
+            </div>
+          `;
+          } else if (leg.type === 1) {
+            const route = leg.route || {};
+            const color = route.color ? "#" + route.color : "#333";
+            const textCol = route.text_color ? "#" + route.text_color : "#fff";
+            const shortName = route.short_name || route.rid || "";
+            const pit = leg.position_in_train;
+
+            let pitHtml = "";
+            if (pit && pit.nb_wagons > 0) {
+              const pName = posAvgName(pit.pos_avg);
+              pitHtml = `
+              <div class="pit">
+                Position in train: car ${pit.wagon}/${pit.nb_wagons} ${pName ? "(" + pName + ")" : ""}
+              </div>
+            `;
+            }
+
+            let stopsHtml = "";
+            const stops = leg.intermediate_stops || [];
+            if (stops.length > 0) {
+              stopsHtml = `
+              <details>
+                <summary>${stops.length} intermediate stop(s)</summary>
+                <ul class="stops">
+                  ${stops
+                    .map(
+                      (s) => `
+                    <li>
+                      ${formatTime(s.arrival_time)} ${s.name}
+                      ${s.is_blocked ? '<span class="blocked">[BLOCKED]</span>' : ""}
+                    </li>
+                  `,
+                    )
+                    .join("")}
+                </ul>
+              </details>
+            `;
+            }
+
+            html += `
+            <div class="leg">
+              <div class="leg-title">
+                <span class="line-tag" style="background:${color}; color:${textCol};">${shortName}</span>
+                <span>${leg.headsign ? "Dir. " + leg.headsign : ""} (${legDur} min)</span>
+              </div>
+              <div>[${legDep}] ${leg.from_stop_name}</div>
+              ${pitHtml}
+              ${stopsHtml}
+              <div>[${legArr}] ${leg.to_stop_name}</div>
+            </div>
+          `;
+          }
+        });
+
+        html += "</div>";
+        container.innerHTML = html;
+      }
+
+      function renderMap(trip) {
+        routesLayer.clearLayers();
+        markersLayer.clearLayers();
+
+        const allCoords = [];
+
+        (trip.legs || []).forEach((leg) => {
+          const legCoords = [];
+          if (leg.from_lat && leg.from_lon)
+            legCoords.push([leg.from_lat, leg.from_lon]);
+          (leg.intermediate_stops || []).forEach((s) => {
+            if (s.lat && s.lon) {
+              legCoords.push([s.lat, s.lon]);
+              if (s.is_blocked) {
+                const blockedMarker = L.circleMarker([s.lat, s.lon], {
+                  radius: 6,
+                  color: "#cc0000",
+                  fillColor: "#ff0000",
+                  fillOpacity: 0.9,
+                  weight: 2,
+                }).bindPopup(
+                  `<b>${s.name}</b><br/><span style="color:#cc0000; font-weight:bold;">BLOCKED STATION</span>`,
+                );
+                markersLayer.addLayer(blockedMarker);
+              } else {
+                const stopMarker = L.circleMarker([s.lat, s.lon], {
+                  radius: 3,
+                  color: "#555",
+                  fillColor: "#fff",
+                  fillOpacity: 1,
+                  weight: 1,
+                }).bindPopup(
+                  `<b>${s.name}</b><br/>${formatTime(s.arrival_time)}`,
+                );
+                markersLayer.addLayer(stopMarker);
+              }
+            }
+          });
+          if (leg.to_lat && leg.to_lon)
+            legCoords.push([leg.to_lat, leg.to_lon]);
+
+          if (legCoords.length >= 2) {
+            allCoords.push(...legCoords);
+            if (leg.type === 1) {
+              const color =
+                leg.route && leg.route.color
+                  ? "#" + leg.route.color
+                  : "#005fb8";
+              L.polyline(legCoords, {
+                color: color,
+                weight: 4,
+                opacity: 0.9,
+              }).addTo(routesLayer);
+            } else {
+              L.polyline(legCoords, {
+                color: "#555",
+                weight: 2,
+                dashArray: "4, 6",
+                opacity: 0.8,
+              }).addTo(routesLayer);
+            }
+          }
+        });
+
+        if (allCoords.length > 0) {
+          const startCoord = allCoords[0];
+          const endCoord = allCoords[allCoords.length - 1];
+
+          L.circleMarker(startCoord, {
+            radius: 7,
+            color: "#008800",
+            fillColor: "#00cc00",
+            fillOpacity: 1,
+            weight: 2,
+          })
+            .bindPopup("<b>Start</b>")
+            .addTo(markersLayer);
+
+          L.circleMarker(endCoord, {
+            radius: 7,
+            color: "#cc0000",
+            fillColor: "#ff3333",
+            fillOpacity: 1,
+            weight: 2,
+          })
+            .bindPopup("<b>Destination</b>")
+            .addTo(markersLayer);
+
+          map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+        }
+      }
+    </script>
+  </body>
+</html>

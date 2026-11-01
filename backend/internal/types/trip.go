@@ -24,6 +24,10 @@ type TripLeg struct {
 	ToSID         string    `json:"to_sid"`
 	FromStopName  string    `json:"from_stop_name"`
 	ToStopName    string    `json:"to_stop_name"`
+	FromLat       float64   `json:"from_lat,omitempty"`
+	FromLon       float64   `json:"from_lon,omitempty"`
+	ToLat         float64   `json:"to_lat,omitempty"`
+	ToLon         float64   `json:"to_lon,omitempty"`
 	DepartureTime time.Time `json:"departure_time"`
 	ArrivalTime   time.Time `json:"arrival_time"`
 	DurationSec   int       `json:"duration_sec"`
@@ -62,6 +66,8 @@ type IntermediateStop struct {
 	ArrivalTime   time.Time `json:"arrival_time"`
 	DepartureTime time.Time `json:"departure_time"`
 	IsBlocked     bool      `json:"is_blocked,omitempty"`
+	Lat           float64   `json:"lat,omitempty"`
+	Lon           float64   `json:"lon,omitempty"`
 }
 
 type TripPositionInTrain struct {
