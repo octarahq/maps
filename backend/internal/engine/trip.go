@@ -353,6 +353,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 	}
 
 	e.populatePositionsInTrain(trip)
+	e.populateLegCoordinates(trip)
 
 	return trip
 }
@@ -692,6 +693,7 @@ func (e *Engine) edgesToParsedTripArrival(
 	}
 
 	e.populatePositionsInTrain(trip)
+	e.populateLegCoordinates(trip)
 
 	return trip
 }
@@ -766,3 +768,233 @@ func (e *Engine) populatePositionsInTrain(trip *types.ParsedTrip) {
 	}
 }
 
+func sliceShape(pts [][2]float64, stopCoords [][2]float64) [][2]float64 {
+	if len(pts) == 0 || len(stopCoords) == 0 {
+		return nil
+	}
+	if len(stopCoords) == 1 {
+		return pts
+	}
+
+	distSq := func(p, target [2]float64) float64 {
+		dlat := p[0] - target[0]
+		dlon := p[1] - target[1]
+		return dlat*dlat + dlon*dlon
+	}
+
+	findClosestIdx := func(startIdx int, target [2]float64) int {
+		bestIdx := startIdx
+		bestDist := 1e18
+		for i := startIdx; i < len(pts); i++ {
+			d := distSq(pts[i], target)
+			if d < bestDist {
+				bestDist = d
+				bestIdx = i
+			}
+		}
+		return bestIdx
+	}
+
+	firstIdx := findClosestIdx(0, stopCoords[0])
+	if len(stopCoords) >= 2 {
+		bestCombined := 1e18
+		for i := 0; i < len(pts); i++ {
+			d0 := distSq(pts[i], stopCoords[0])
+			if d0 < 0.00005 {
+				for j := i; j < len(pts); j++ {
+					d1 := distSq(pts[j], stopCoords[1])
+					if d0+d1 < bestCombined {
+						bestCombined = d0 + d1
+						firstIdx = i
+					}
+				}
+			}
+		}
+	}
+
+	currIdx := firstIdx
+	for s := 1; s < len(stopCoords); s++ {
+		currIdx = findClosestIdx(currIdx, stopCoords[s])
+	}
+	lastIdx := currIdx
+
+	if firstIdx > lastIdx {
+		firstIdx, lastIdx = lastIdx, firstIdx
+	}
+
+	count := lastIdx - firstIdx + 1
+	if count <= 0 {
+		return nil
+	}
+
+	res := make([][2]float64, count)
+	copy(res, pts[firstIdx:lastIdx+1])
+	return res
+}
+
+func (e *Engine) findBestShapeForLeg(stopCoords [][2]float64, rType types.RouteType) (string, [][2]float64) {
+	if len(stopCoords) < 2 {
+		return "", nil
+	}
+	shapesList := e.shapesByType[rType]
+	if len(shapesList) == 0 {
+		return "", nil
+	}
+
+	distSq := func(p, target [2]float64) float64 {
+		dlat := p[0] - target[0]
+		dlon := p[1] - target[1]
+		return dlat*dlat + dlon*dlon
+	}
+
+	startPt := stopCoords[0]
+	endPt := stopCoords[len(stopCoords)-1]
+
+	var bestID string
+	var bestPts [][2]float64
+	bestScore := 1e18
+
+	for _, shp := range shapesList {
+		if len(shp.Points) < 2 {
+			continue
+		}
+
+		if startPt[0] < shp.MinLat-0.01 || startPt[0] > shp.MaxLat+0.01 ||
+			startPt[1] < shp.MinLon-0.01 || startPt[1] > shp.MaxLon+0.01 ||
+			endPt[0] < shp.MinLat-0.01 || endPt[0] > shp.MaxLat+0.01 ||
+			endPt[1] < shp.MinLon-0.01 || endPt[1] > shp.MaxLon+0.01 {
+			continue
+		}
+
+		pts := shp.Points
+		bestI := -1
+		minD0 := 1e18
+		for i := 0; i < len(pts); i++ {
+			d := distSq(pts[i], startPt)
+			if d < minD0 {
+				minD0 = d
+				bestI = i
+			}
+		}
+		if minD0 > 0.0001 {
+			continue
+		}
+
+		bestJ := -1
+		minD1 := 1e18
+		for j := bestI; j < len(pts); j++ {
+			d := distSq(pts[j], endPt)
+			if d < minD1 {
+				minD1 = d
+				bestJ = j
+			}
+		}
+		if minD1 > 0.0001 || bestJ <= bestI {
+			continue
+		}
+
+		interScore := 0.0
+		currK := bestI
+		allFound := true
+		for s := 1; s < len(stopCoords)-1; s++ {
+			bestK := currK
+			minDk := 1e18
+			for k := currK; k <= bestJ; k++ {
+				d := distSq(pts[k], stopCoords[s])
+				if d < minDk {
+					minDk = d
+					bestK = k
+				}
+			}
+			if minDk > 0.0002 {
+				allFound = false
+				break
+			}
+			interScore += minDk
+			currK = bestK
+		}
+		if !allFound {
+			continue
+		}
+
+		totalScore := minD0 + minD1 + interScore
+		if totalScore < bestScore {
+			bestScore = totalScore
+			bestID = shp.ID
+			bestPts = pts
+		}
+	}
+
+	return bestID, bestPts
+}
+
+func (e *Engine) populateLegCoordinates(trip *types.ParsedTrip) {
+	if trip == nil || len(trip.Legs) == 0 {
+		return
+	}
+
+	for i := range trip.Legs {
+		leg := &trip.Legs[i]
+		if leg.Type == types.LegTypeWalk || leg.Type == types.LegTypeBike {
+			coords := make([][2]float64, 0, 2)
+			if leg.FromLat != 0 || leg.FromLon != 0 {
+				coords = append(coords, [2]float64{leg.FromLat, leg.FromLon})
+			}
+			if leg.ToLat != 0 || leg.ToLon != 0 {
+				coords = append(coords, [2]float64{leg.ToLat, leg.ToLon})
+			}
+			leg.Coordinates = coords
+			continue
+		}
+
+		if leg.Type == types.LegTypeTransit {
+			var stopCoords [][2]float64
+			if leg.FromLat != 0 || leg.FromLon != 0 {
+				stopCoords = append(stopCoords, [2]float64{leg.FromLat, leg.FromLon})
+			}
+			for _, is := range leg.IntermediateStops {
+				if is.Lat != 0 || is.Lon != 0 {
+					stopCoords = append(stopCoords, [2]float64{is.Lat, is.Lon})
+				}
+			}
+			if leg.ToLat != 0 || leg.ToLon != 0 {
+				stopCoords = append(stopCoords, [2]float64{leg.ToLat, leg.ToLon})
+			}
+
+			var pts [][2]float64
+			hasTrip := leg.TripIndex > 0 && int(leg.TripIndex)-1 < len(e.Net.Trips)
+
+			if hasTrip && len(e.shapesIndex) > 0 {
+				t := e.Net.Trips[leg.TripIndex-1]
+				if t.ShapeID != "" {
+					pts = e.shapesIndex[t.ShapeID]
+					if len(pts) == 0 {
+						pts = e.shapesIndex[utils.IdRemoveIDFMPrefix(t.ShapeID)]
+					}
+				}
+			}
+
+			if len(pts) == 0 && len(stopCoords) >= 2 {
+				matchedID, matchedPts := e.findBestShapeForLeg(stopCoords, leg.Route.RouteType)
+				if len(matchedPts) > 0 {
+					pts = matchedPts
+					if hasTrip {
+						e.Net.Trips[leg.TripIndex-1].ShapeID = matchedID
+					}
+				}
+			}
+
+			if len(pts) > 0 && len(stopCoords) >= 2 {
+				sliced := sliceShape(pts, stopCoords)
+				if len(sliced) >= 2 {
+					sliced[0] = stopCoords[0]
+					sliced[len(sliced)-1] = stopCoords[len(stopCoords)-1]
+					leg.Coordinates = sliced
+					continue
+				}
+			}
+
+			leg.Coordinates = stopCoords
+		}
+	}
+}

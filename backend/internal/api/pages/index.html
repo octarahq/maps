@@ -644,20 +644,25 @@
           if (leg.to_lat && leg.to_lon)
             legCoords.push([leg.to_lat, leg.to_lon]);
 
-          if (legCoords.length >= 2) {
-            allCoords.push(...legCoords);
+          const polyCoords =
+            leg.coordinates && leg.coordinates.length >= 2
+              ? leg.coordinates
+              : legCoords;
+
+          if (polyCoords.length >= 2) {
+            allCoords.push(...polyCoords);
             if (leg.type === 1) {
               const color =
                 leg.route && leg.route.color
                   ? "#" + leg.route.color
                   : "#005fb8";
-              L.polyline(legCoords, {
+              L.polyline(polyCoords, {
                 color: color,
                 weight: 4,
                 opacity: 0.9,
               }).addTo(routesLayer);
             } else {
-              L.polyline(legCoords, {
+              L.polyline(polyCoords, {
                 color: "#555",
                 weight: 2,
                 dashArray: "4, 6",

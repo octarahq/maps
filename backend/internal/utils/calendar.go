@@ -193,3 +193,52 @@ func LoadTripServiceMapping(path string) (map[string]string, error) {
 	}
 	return mapping, scanner.Err()
 }
+
+func LoadTripShapeMapping(path string) (map[string]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	mapping := make(map[string]string, 600000)
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	if !scanner.Scan() {
+		return mapping, nil
+	}
+
+	header := scanner.Text()
+	headers := strings.Split(header, ",")
+	sIdx, tIdx := -1, -1
+	for i, h := range headers {
+		clean := strings.TrimSpace(strings.TrimPrefix(h, "\ufeff"))
+		if clean == "shape_id" {
+			sIdx = i
+		} else if clean == "trip_id" {
+			tIdx = i
+		}
+	}
+	if sIdx < 0 || tIdx < 0 {
+		return nil, fmt.Errorf("missing shape_id or trip_id in header: %s", header)
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, ",")
+		if len(parts) > sIdx && len(parts) > tIdx {
+			shpID := parts[sIdx]
+			if shpID != "" {
+				mapping[parts[tIdx]] = shpID
+				clean := IdRemoveIDFMPrefix(parts[tIdx])
+				if clean != parts[tIdx] {
+					mapping[clean] = shpID
+				}
+			}
+		}
+	}
+	return mapping, scanner.Err()
+}
+

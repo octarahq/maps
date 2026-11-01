@@ -156,6 +156,7 @@ type Trip struct {
 	Headsign     string        `csv:"trip_headsign"`
 	SName        string        `csv:"trip_short_name"`
 	DirID        uint8         `csv:"direction_id"`
+	ShapeID      string        `csv:"shape_id"`
 	WheelChair   Accessibility `csv:"wheelchair_accessible"`
 	BikesAllowed Accessibility `csv:"bikes_allowed"`
 }

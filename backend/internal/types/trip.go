@@ -42,6 +42,8 @@ type TripLeg struct {
 
 	Wheelchair   Accessibility `json:"wheelchair"`
 	BikesAllowed Accessibility `json:"bikes_allowed"`
+
+	Coordinates [][2]float64 `json:"coordinates,omitempty"`
 }
 
 type LegType uint8
