@@ -61,12 +61,13 @@ func (e *Engine) edgesToParsedTripDeparture(
 	baseDate, targetTime time.Time,
 ) *types.ParsedTrip {
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
 	startSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currentSec := startSec
 
 	trip := &types.ParsedTrip{
-		FromSID:        edges[0].FromSID,
-		ToSID:          edges[len(edges)-1].ToSID,
+		FromSID:        utils.IdRemoveIDFMPrefix(edges[0].FromSID),
+		ToSID:          utils.IdRemoveIDFMPrefix(edges[len(edges)-1].ToSID),
 		DepartureTime:  targetTime,
 		IsWheelchair:   types.AccessibilityYes,
 		IsBikesAllowed: types.AccessibilityYes,
@@ -100,7 +101,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 			trip.Legs = append(trip.Legs, types.TripLeg{
 				Type:          types.LegTypeBike,
 				FromSID:       "",
-				ToSID:         firstStop.SID,
+				ToSID:         utils.IdRemoveIDFMPrefix(firstStop.SID),
 				DepartureTime: legDep,
 				ArrivalTime:   legArr,
 				DurationSec:   int(bikeTimeSec),
@@ -116,7 +117,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 			trip.Legs = append(trip.Legs, types.TripLeg{
 				Type:          types.LegTypeWalk,
 				FromSID:       "",
-				ToSID:         firstStop.SID,
+				ToSID:         utils.IdRemoveIDFMPrefix(firstStop.SID),
 				DepartureTime: legDep,
 				ArrivalTime:   legArr,
 				DurationSec:   int(walkTimeSec),
@@ -138,7 +139,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 
 		isNewLeg := currentLeg == nil ||
 			currentLeg.Type != legType ||
-			(legType == types.LegTypeTransit && currentLeg.Route != nil && currentLeg.Route.RID != edge.RID)
+			(legType == types.LegTypeTransit && currentLeg.Route != nil && currentLeg.Route.RID != utils.IdRemoveIDFMPrefix(edge.RID))
 
 		if isNewLeg {
 			if currentLeg != nil {
@@ -155,8 +156,8 @@ func (e *Engine) edgesToParsedTripDeparture(
 						fromStop := e.getStopFromIndex(edge.FromSID, stops)
 						transferLeg := types.TripLeg{
 							Type:          types.LegTypeWalk,
-							FromSID:       edge.FromSID,
-							ToSID:         edge.FromSID,
+							FromSID:       utils.IdRemoveIDFMPrefix(edge.FromSID),
+							ToSID:         utils.IdRemoveIDFMPrefix(edge.FromSID),
 							FromStopName:  fromStop.Name,
 							ToStopName:    fromStop.Name,
 							DepartureTime: transferDep,
@@ -173,8 +174,8 @@ func (e *Engine) edgesToParsedTripDeparture(
 			fromStop := e.getStopFromIndex(edge.FromSID, stops)
 			leg := types.TripLeg{
 				Type:              legType,
-				FromSID:           edge.FromSID,
-				ToSID:             edge.ToSID,
+				FromSID:           utils.IdRemoveIDFMPrefix(edge.FromSID),
+				ToSID:             utils.IdRemoveIDFMPrefix(edge.ToSID),
 				FromStopName:      fromStop.Name,
 				Headsign:          edge.Headsign,
 				Wheelchair:        edge.Wheelchair,
@@ -186,7 +187,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 				route := routes[edge.RID]
 
 				leg.Route = &types.RouteSummary{
-					RID:       route.RID,
+					RID:       utils.IdRemoveIDFMPrefix(route.RID),
 					ShortName: route.SName,
 					LongName:  route.LName,
 					RouteType: route.RType,
@@ -217,12 +218,13 @@ func (e *Engine) edgesToParsedTripDeparture(
 		} else {
 			intermediateStop := e.getStopFromIndex(edge.FromSID, stops)
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
-				SID:           intermediateStop.SID,
+				SID:           utils.IdRemoveIDFMPrefix(intermediateStop.SID),
 				Name:          intermediateStop.Name,
 				ArrivalTime:   baseDate.Add(time.Duration(currentSec) * time.Second),
 				DepartureTime: baseDate.Add(time.Duration(currentSec) * time.Second),
+				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID),
 			})
-			currentLeg.ToSID = edge.ToSID
+			currentLeg.ToSID = utils.IdRemoveIDFMPrefix(edge.ToSID)
 
 			if edge.RID != "" {
 				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec, activeServices)
@@ -270,7 +272,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 			legArr := baseDate.Add(time.Duration(currentSec+walkArrSec) * time.Second)
 			trip.Legs = append(trip.Legs, types.TripLeg{
 				Type:          types.LegTypeWalk,
-				FromSID:       lastStop.SID,
+				FromSID:       utils.IdRemoveIDFMPrefix(lastStop.SID),
 				ToSID:         "",
 				DepartureTime: legDep,
 				ArrivalTime:   legArr,
@@ -320,6 +322,7 @@ func (e *Engine) edgesToParsedTripArrival(
 	baseDate, targetTime time.Time,
 ) *types.ParsedTrip {
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
 	targetArrSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currSec := targetArrSec
 
@@ -414,8 +417,8 @@ func (e *Engine) edgesToParsedTripArrival(
 	bikeDuration := 0
 
 	trip := &types.ParsedTrip{
-		FromSID:        edges[0].FromSID,
-		ToSID:          edges[n-1].ToSID,
+		FromSID:        utils.IdRemoveIDFMPrefix(edges[0].FromSID),
+		ToSID:          utils.IdRemoveIDFMPrefix(edges[n-1].ToSID),
 		DepartureTime:  baseDate.Add(time.Duration(originDepSec) * time.Second),
 		IsWheelchair:   types.AccessibilityYes,
 		IsBikesAllowed: types.AccessibilityYes,
@@ -428,7 +431,7 @@ func (e *Engine) edgesToParsedTripArrival(
 			trip.Legs = append(trip.Legs, types.TripLeg{
 				Type:          types.LegTypeBike,
 				FromSID:       "",
-				ToSID:         firstStop.SID,
+				ToSID:         utils.IdRemoveIDFMPrefix(firstStop.SID),
 				DepartureTime: baseDate.Add(time.Duration(originDepSec) * time.Second),
 				ArrivalTime:   baseDate.Add(time.Duration(originArrSec) * time.Second),
 				DurationSec:   bikeDur,
@@ -442,7 +445,7 @@ func (e *Engine) edgesToParsedTripArrival(
 			trip.Legs = append(trip.Legs, types.TripLeg{
 				Type:          types.LegTypeWalk,
 				FromSID:       "",
-				ToSID:         firstStop.SID,
+				ToSID:         utils.IdRemoveIDFMPrefix(firstStop.SID),
 				DepartureTime: baseDate.Add(time.Duration(originDepSec) * time.Second),
 				ArrivalTime:   baseDate.Add(time.Duration(originArrSec) * time.Second),
 				DurationSec:   walkDur,
@@ -463,7 +466,7 @@ func (e *Engine) edgesToParsedTripArrival(
 
 		isNewLeg := currentLeg == nil ||
 			currentLeg.Type != legType ||
-			(legType == types.LegTypeTransit && currentLeg.Route != nil && currentLeg.Route.RID != edge.RID)
+			(legType == types.LegTypeTransit && currentLeg.Route != nil && currentLeg.Route.RID != utils.IdRemoveIDFMPrefix(edge.RID))
 
 		if isNewLeg {
 			if currentLeg != nil {
@@ -483,8 +486,8 @@ func (e *Engine) edgesToParsedTripArrival(
 					fromStop := e.getStopFromIndex(edge.FromSID, stops)
 					transferLeg := types.TripLeg{
 						Type:          types.LegTypeWalk,
-						FromSID:       edge.FromSID,
-						ToSID:         edge.FromSID,
+						FromSID:       utils.IdRemoveIDFMPrefix(edge.FromSID),
+						ToSID:         utils.IdRemoveIDFMPrefix(edge.FromSID),
 						FromStopName:  fromStop.Name,
 						ToStopName:    fromStop.Name,
 						DepartureTime: tDep,
@@ -499,8 +502,8 @@ func (e *Engine) edgesToParsedTripArrival(
 			fromStop := e.getStopFromIndex(edge.FromSID, stops)
 			leg := types.TripLeg{
 				Type:              legType,
-				FromSID:           edge.FromSID,
-				ToSID:             edge.ToSID,
+				FromSID:           utils.IdRemoveIDFMPrefix(edge.FromSID),
+				ToSID:             utils.IdRemoveIDFMPrefix(edge.ToSID),
 				FromStopName:      fromStop.Name,
 				Headsign:          edge.Headsign,
 				Wheelchair:        edge.Wheelchair,
@@ -514,7 +517,7 @@ func (e *Engine) edgesToParsedTripArrival(
 			if legType == types.LegTypeTransit {
 				route := routes[edge.RID]
 				leg.Route = &types.RouteSummary{
-					RID:       route.RID,
+					RID:       utils.IdRemoveIDFMPrefix(route.RID),
 					ShortName: route.SName,
 					LongName:  route.LName,
 					RouteType: route.RType,
@@ -533,12 +536,13 @@ func (e *Engine) edgesToParsedTripArrival(
 		} else {
 			intermediateStop := e.getStopFromIndex(edge.FromSID, stops)
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
-				SID:           intermediateStop.SID,
+				SID:           utils.IdRemoveIDFMPrefix(intermediateStop.SID),
 				Name:          intermediateStop.Name,
 				ArrivalTime:   baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
 				DepartureTime: baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
+				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID),
 			})
-			currentLeg.ToSID = edge.ToSID
+			currentLeg.ToSID = utils.IdRemoveIDFMPrefix(edge.ToSID)
 			currentLeg.ArrivalTime = baseDate.Add(time.Duration(edgeArr[i]) * time.Second)
 			currentLeg.DurationSec = int(currentLeg.ArrivalTime.Sub(currentLeg.DepartureTime).Seconds())
 
@@ -574,7 +578,7 @@ func (e *Engine) edgesToParsedTripArrival(
 		destArr := lastArr.Add(time.Duration(destWalkSec) * time.Second)
 		trip.Legs = append(trip.Legs, types.TripLeg{
 			Type:          types.LegTypeWalk,
-			FromSID:       lastStop.SID,
+			FromSID:       utils.IdRemoveIDFMPrefix(lastStop.SID),
 			ToSID:         "",
 			DepartureTime: lastArr,
 			ArrivalTime:   destArr,

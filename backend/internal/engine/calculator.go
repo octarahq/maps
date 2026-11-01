@@ -26,6 +26,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		targetTime = time.Now()
 	}
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
 
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
@@ -111,6 +112,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	}
 	depMap := make(map[string]candidateDeparture)
 	for _, s := range depStops {
+		if ad.IsStopBlocked(s.SID) {
+			continue
+		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
 		if d <= 1.2 {
 			walkSec := uint32((d / walkSpeed) * 3600)
@@ -124,6 +128,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		}
 	}
 	for _, s := range stationStops {
+		if ad.IsStopBlocked(s.SID) {
+			continue
+		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
 		if d <= 1.2 {
 			walkSec := uint32((d / walkSpeed) * 3600)
@@ -145,7 +152,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	var nearestStationDeps []candidateDeparture
 	if config.WithBike {
 		nearestStationDep, bp, okSt := e.SearchNearestStationWithBikeParkingByCoord(lonFrom, latFrom, 7.5, 0.5)
-		if okSt {
+		if okSt && !ad.IsStopBlocked(nearestStationDep.SID) {
 			if utils.IsAccessible(nearestStationDep.WheelChair, config.WheelchairOnly) {
 				d := utils.CoordsGetDistance(nearestStationDep.Long, nearestStationDep.Lat, lonFrom, latFrom)
 				bikeSec := uint32((d / bikeSpeed) * 3600)
@@ -161,7 +168,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		}
 	} else {
 		nearestStationDep, okSt := e.SearchNearestStationByCoord(lonFrom, latFrom, 1.5)
-		if okSt {
+		if okSt && !ad.IsStopBlocked(nearestStationDep.SID) {
 			if utils.IsAccessible(nearestStationDep.WheelChair, config.WheelchairOnly) {
 				d := utils.CoordsGetDistance(nearestStationDep.Long, nearestStationDep.Lat, lonFrom, latFrom)
 				walkSec := uint32((d / walkSpeed) * 3600)
@@ -180,7 +187,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	if config.WithBike {
 		seenDepParents := make(map[string]bool)
 		for _, s := range stationStops {
-			if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+			if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 				continue
 			}
 			d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
@@ -213,7 +220,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 
 	arrMap := make(map[string]candidateArrival)
 	for _, s := range e.SearchArrivalStopsByCoord(lonTo, latTo, 0.8, 15) {
-		if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+		if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 			continue
 		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
@@ -221,7 +228,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		arrMap[s.SID] = candidateArrival{stop: s, walkSec: walkSec, distKm: d}
 	}
 	for _, s := range stationStops {
-		if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+		if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 			continue
 		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
@@ -233,11 +240,14 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		}
 	}
 	if len(arrMap) == 0 {
-		toStops := e.SearchStopsByNeerCord(lonTo, latTo, 1)
-		if len(toStops) > 0 {
-			d := utils.CoordsGetDistance(toStops[0].Long, toStops[0].Lat, lonTo, latTo)
-			walkSec := uint32((d / walkSpeed) * 3600)
-			arrMap[toStops[0].SID] = candidateArrival{stop: toStops[0], walkSec: walkSec, distKm: d}
+		toStops := e.SearchStopsByNeerCord(lonTo, latTo, 5)
+		for _, s := range toStops {
+			if !ad.IsStopBlocked(s.SID) {
+				d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
+				walkSec := uint32((d / walkSpeed) * 3600)
+				arrMap[s.SID] = candidateArrival{stop: s, walkSec: walkSec, distKm: d}
+				break
+			}
 		}
 	}
 
@@ -382,9 +392,18 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 					nextLastRID := currLastRID
 
 					if edge.RID == "" {
+						if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+							continue
+						}
 						nextTime = currTime + uint32(edge.Weight)
 						edgeCost = int(float64(edge.Weight) * walkMultiplier)
 					} else {
+						if ad.IsEdgeBlocked(&edge) {
+							continue
+						}
+						if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
+							continue
+						}
 						depTime, arrTime, okNext := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
 						if !okNext {
 							continue
@@ -400,6 +419,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 							if currLastRID != "" {
 								edgeCost += transferPenalty
 							}
+						}
+						if ad.IsEdgePerturbed(&edge) {
+							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
 						nextLastRID = edge.RID
 					}
@@ -516,6 +538,10 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 		targetTime = time.Now()
 	}
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
+	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {
+		return nil, fmt.Errorf("station is blocked")
+	}
 
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
@@ -573,9 +599,18 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 			}
 
 			if edge.RID == "" {
+				if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+					continue
+				}
 				nextTime = currTime + uint32(edge.Weight)
 				edgeCost = int(float64(edge.Weight) * walkMultiplier)
 			} else {
+				if ad.IsEdgeBlocked(&edge) {
+					continue
+				}
+				if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
+					continue
+				}
 				depTime, arrTime, ok := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
 				if !ok {
 					continue
@@ -592,6 +627,9 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 					if currLastRID != "" {
 						edgeCost += transferPenalty
 					}
+				}
+				if ad.IsEdgePerturbed(&edge) {
+					edgeCost += int(float64(rideTime)*0.3) + 60
 				}
 				nextLastRID = edge.RID
 			}
@@ -645,6 +683,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 		targetTime = time.Now()
 	}
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
 
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
@@ -730,6 +769,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 	}
 	depMap := make(map[string]candidateDeparture)
 	for _, s := range depStops {
+		if ad.IsStopBlocked(s.SID) {
+			continue
+		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
 		if d <= 1.2 {
 			walkSec := uint32((d / walkSpeed) * 3600)
@@ -743,6 +785,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 		}
 	}
 	for _, s := range stationStops {
+		if ad.IsStopBlocked(s.SID) {
+			continue
+		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
 		if d <= 1.2 {
 			walkSec := uint32((d / walkSpeed) * 3600)
@@ -764,7 +809,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 	var nearestStationDeps []candidateDeparture
 	if config.WithBike {
 		nearestStationDep, bp, okSt := e.SearchNearestStationWithBikeParkingByCoord(lonFrom, latFrom, 7.5, 0.5)
-		if okSt {
+		if okSt && !ad.IsStopBlocked(nearestStationDep.SID) {
 			if utils.IsAccessible(nearestStationDep.WheelChair, config.WheelchairOnly) {
 				d := utils.CoordsGetDistance(nearestStationDep.Long, nearestStationDep.Lat, lonFrom, latFrom)
 				bikeSec := uint32((d / bikeSpeed) * 3600)
@@ -780,7 +825,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 		}
 	} else {
 		nearestStationDep, okSt := e.SearchNearestStationByCoord(lonFrom, latFrom, 1.5)
-		if okSt {
+		if okSt && !ad.IsStopBlocked(nearestStationDep.SID) {
 			if utils.IsAccessible(nearestStationDep.WheelChair, config.WheelchairOnly) {
 				d := utils.CoordsGetDistance(nearestStationDep.Long, nearestStationDep.Lat, lonFrom, latFrom)
 				walkSec := uint32((d / walkSpeed) * 3600)
@@ -799,7 +844,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 	if config.WithBike {
 		seenDepParents := make(map[string]bool)
 		for _, s := range stationStops {
-			if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+			if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 				continue
 			}
 			d := utils.CoordsGetDistance(s.Long, s.Lat, lonFrom, latFrom)
@@ -832,7 +877,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 
 	arrMap := make(map[string]candidateArrival)
 	for _, s := range e.SearchArrivalStopsByCoord(lonTo, latTo, 0.8, 15) {
-		if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+		if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 			continue
 		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
@@ -840,7 +885,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 		arrMap[s.SID] = candidateArrival{stop: s, walkSec: walkSec, distKm: d}
 	}
 	for _, s := range stationStops {
-		if !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
+		if ad.IsStopBlocked(s.SID) || !utils.IsAccessible(s.WheelChair, config.WheelchairOnly) {
 			continue
 		}
 		d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
@@ -852,11 +897,14 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 		}
 	}
 	if len(arrMap) == 0 {
-		toStops := e.SearchStopsByNeerCord(lonTo, latTo, 1)
-		if len(toStops) > 0 {
-			d := utils.CoordsGetDistance(toStops[0].Long, toStops[0].Lat, lonTo, latTo)
-			walkSec := uint32((d / walkSpeed) * 3600)
-			arrMap[toStops[0].SID] = candidateArrival{stop: toStops[0], walkSec: walkSec, distKm: d}
+		toStops := e.SearchStopsByNeerCord(lonTo, latTo, 5)
+		for _, s := range toStops {
+			if !ad.IsStopBlocked(s.SID) {
+				d := utils.CoordsGetDistance(s.Long, s.Lat, lonTo, latTo)
+				walkSec := uint32((d / walkSpeed) * 3600)
+				arrMap[s.SID] = candidateArrival{stop: s, walkSec: walkSec, distKm: d}
+				break
+			}
 		}
 	}
 
@@ -1012,12 +1060,21 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 					nextLastRID := currLastRID
 
 					if edge.RID == "" {
+						if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+							continue
+						}
 						if currTime < uint32(edge.Weight) {
 							continue
 						}
 						prevTime = currTime - uint32(edge.Weight)
 						edgeCost = int(float64(edge.Weight) * walkMultiplier)
 					} else {
+						if ad.IsEdgeBlocked(&edge) {
+							continue
+						}
+						if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
+							continue
+						}
 						depTime, arrTime, okPrev := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
 						if !okPrev {
 							continue
@@ -1033,6 +1090,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 							if currLastRID != "" {
 								edgeCost += transferPenalty
 							}
+						}
+						if ad.IsEdgePerturbed(&edge) {
+							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
 						nextLastRID = edge.RID
 					}
@@ -1128,6 +1188,10 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 		targetTime = time.Now()
 	}
 	activeServices := e.GetActiveServices(targetTime)
+	ad := e.GetActiveDisruptions(targetTime)
+	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {
+		return nil, fmt.Errorf("station is blocked")
+	}
 
 	targetSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	startKey := stateKey{SID: toSID, lastRID: ""}
@@ -1184,12 +1248,21 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 			}
 
 			if edge.RID == "" {
+				if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+					continue
+				}
 				if currTime < uint32(edge.Weight) {
 					continue
 				}
 				prevTime = currTime - uint32(edge.Weight)
 				edgeCost = int(float64(edge.Weight) * walkMultiplier)
 			} else {
+				if ad.IsEdgeBlocked(&edge) {
+					continue
+				}
+				if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
+					continue
+				}
 				depTime, arrTime, okNext := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
 				if !okNext {
 					continue
@@ -1206,6 +1279,9 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 					if currLastRID != "" {
 						edgeCost += transferPenalty
 					}
+				}
+				if ad.IsEdgePerturbed(&edge) {
+					edgeCost += int(float64(rideTime)*0.3) + 60
 				}
 				nextLastRID = edge.RID
 			}

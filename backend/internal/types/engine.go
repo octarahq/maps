@@ -17,7 +17,6 @@ type CalculatorConfig struct {
 
 	AllowedModes []RouteType `json:"allowed_modes,omitempty"`
 
-	WithCar  bool `json:"with_car"` //not implemented
 	WithBike bool `json:"with_bike"`
 
 	WheelchairOnly Accessibility `json:"wheelchair_only"`
@@ -43,4 +42,44 @@ type DepartureInfo struct {
 	Time        time.Time `json:"time"`
 	TimeString  string    `json:"time_string"`
 	WaitMinutes float64   `json:"wait_minutes"`
+}
+
+type DisruptionCause uint8
+
+const (
+	DisruptionCauseUnknow DisruptionCause = iota
+	DisruptionCauseTravaux
+	DisruptionCauseDisturbance
+	DisruptionCauseInfo
+)
+
+type DisruptionSeverity uint8
+
+const (
+	DisruptionSeverityUnknow DisruptionSeverity = iota
+	DisruptionSeverityBloqued
+	DisruptionSeverityPerturbate
+	DisruptionSeverityInfo
+)
+
+type DisruptionPeriod struct {
+	Begin time.Time
+	End   time.Time
+}
+
+type Disruption struct {
+	DID              string
+	Periods          []DisruptionPeriod
+	Cause            DisruptionCause
+	Severity         DisruptionSeverity
+	Title            string
+	Message          string
+	SMessage         string
+	ImpactedSections []DisruptionImpactedSections
+}
+
+type DisruptionImpactedSections struct {
+	RID  string
+	From string
+	To   string
 }

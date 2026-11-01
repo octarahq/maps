@@ -61,6 +61,7 @@ type IntermediateStop struct {
 	Name          string    `json:"name"`
 	ArrivalTime   time.Time `json:"arrival_time"`
 	DepartureTime time.Time `json:"departure_time"`
+	IsBlocked     bool      `json:"is_blocked,omitempty"`
 }
 
 type TripPositionInTrain struct {
