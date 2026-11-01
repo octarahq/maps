@@ -96,18 +96,19 @@ func init() {
 				if parsed, err := time.Parse(time.RFC3339, val); err == nil {
 					return parsed.In(location).Truncate(time.Second), true
 				}
-				if parsed, err := time.Parse("2006-01-02T15:04:05", val); err == nil {
-					return parsed.In(location).Truncate(time.Second), true
+				if parsed, err := time.ParseInLocation("2006-01-02T15:04:05", val, location); err == nil {
+					return parsed.Truncate(time.Second), true
 				}
-				if parsed, err := time.Parse("2006-01-02T15:04", val); err == nil {
-					return parsed.In(location).Truncate(time.Second), true
+				if parsed, err := time.ParseInLocation("2006-01-02T15:04", val, location); err == nil {
+					return parsed.Truncate(time.Second), true
 				}
-				if parsed, err := time.Parse("15:04", val); err == nil {
+				if parsed, err := time.ParseInLocation("15:04", val, location); err == nil {
 					now := time.Now().In(location)
 					return time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, location), true
 				}
 				return time.Time{}, false
 			}
+
 
 			if value := c.Query("arrivaltime"); value != "" {
 				if parsedTime, ok := parseCustomTime(value); ok {
