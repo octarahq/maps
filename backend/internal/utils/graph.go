@@ -16,6 +16,15 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 
 	graph := make(types.GraphType)
 	trips := IndexTripsByID(net.Trips)
+	tripIndexMap := make(map[string]uint32, len(net.Trips)*2)
+	for i, t := range net.Trips {
+		idx := uint32(i + 1)
+		tripIndexMap[t.TID] = idx
+		clean := IdRemoveIDFMPrefix(t.TID)
+		if clean != t.TID {
+			tripIndexMap[clean] = idx
+		}
+	}
 
 	stopsTime := net.StopTimes
 	savedStep := make(map[string]bool)
@@ -34,6 +43,7 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 		if prev.TID == curr.TID {
 			trip := trips[curr.TID]
 			rid := trip.RID
+			tripIndex := tripIndexMap[curr.TID]
 
 			var serviceID uint16
 			if ci != nil && trip.ServiceID != "" {
@@ -57,7 +67,7 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 					BikesAllowed: trip.BikesAllowed,
 					Weight:       diff,
 					Schedules: []types.DepartureTime{
-						{Dep: uint32(prev.DTime), Arr: uint32(curr.ATime), ServiceID: serviceID},
+						{Dep: uint32(prev.DTime), Arr: uint32(curr.ATime), ServiceID: serviceID, TripIndex: tripIndex},
 					},
 				}
 				graph[prev.SId] = append(graph[prev.SId], edge)
@@ -77,6 +87,7 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 					Dep:       uint32(prev.DTime),
 					Arr:       uint32(curr.ATime),
 					ServiceID: serviceID,
+					TripIndex: tripIndex,
 				})
 			}
 		}

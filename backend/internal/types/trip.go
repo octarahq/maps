@@ -20,6 +20,7 @@ type ParsedTrip struct {
 
 type TripLeg struct {
 	Type          LegType   `json:"type"`
+	TripIndex     uint32    `json:"trip_index,omitempty"`
 	FromSID       string    `json:"from_sid"`
 	ToSID         string    `json:"to_sid"`
 	FromStopName  string    `json:"from_stop_name"`

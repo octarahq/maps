@@ -141,3 +141,41 @@ func FindPrevDepartureWithArr(schedules []types.DepartureTime, currSec uint32, a
 	}
 	return 0, 0, false
 }
+
+func FindTripDeparture(schedules []types.DepartureTime, tripIndex uint32, currSec uint32, activeServices ...[]bool) (types.DepartureTime, bool) {
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+	for i := range schedules {
+		s := &schedules[i]
+		if s.TripIndex == tripIndex {
+			if s.Dep >= currSec {
+				if len(active) == 0 || (int(s.ServiceID) < len(active) && active[s.ServiceID]) {
+					return *s, true
+				}
+			}
+			return types.DepartureTime{}, false
+		}
+	}
+	return types.DepartureTime{}, false
+}
+
+func FindTripArrival(schedules []types.DepartureTime, tripIndex uint32, currSec uint32, activeServices ...[]bool) (types.DepartureTime, bool) {
+	var active []bool
+	if len(activeServices) > 0 {
+		active = activeServices[0]
+	}
+	for i := range schedules {
+		s := &schedules[i]
+		if s.TripIndex == tripIndex {
+			if s.Arr <= currSec {
+				if len(active) == 0 || (int(s.ServiceID) < len(active) && active[s.ServiceID]) {
+					return *s, true
+				}
+			}
+			return types.DepartureTime{}, false
+		}
+	}
+	return types.DepartureTime{}, false
+}

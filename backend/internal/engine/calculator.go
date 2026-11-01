@@ -297,8 +297,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 			}
 
 			type stateKey struct {
-				SID     string
-				lastRID string
+				SID          string
+				TripIndex    uint32
+				HasTransited bool
 			}
 			type routeNode struct {
 				time     uint32
@@ -308,9 +309,10 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 				hasPrev  bool
 			}
 			type queueNode struct {
-				SID      string
-				lastRID  string
-				Priority int
+				SID          string
+				TripIndex    uint32
+				HasTransited bool
+				Priority     int
 			}
 
 			queue := utils.NewPriorityQueue[queueNode]()
@@ -323,9 +325,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 				if dep.mode == "walk" {
 					initCost = int(float64(dep.costSec) * route.Factors.Walk)
 				}
-				key := stateKey{SID: dep.stop.SID, lastRID: ""}
+				key := stateKey{SID: dep.stop.SID, TripIndex: 0, HasTransited: false}
 				visited[key] = routeNode{time: initTime, cost: initCost, hasPrev: false}
-				queue.Push(queueNode{SID: dep.stop.SID, lastRID: "", Priority: initCost}, initCost)
+				queue.Push(queueNode{SID: dep.stop.SID, TripIndex: 0, HasTransited: false, Priority: initCost}, initCost)
 			}
 
 			var destKey stateKey
@@ -337,7 +339,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 
 			for queue.Len() > 0 {
 				current, _ := queue.Pop()
-				currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
+				currKey := stateKey{SID: current.SID, TripIndex: current.TripIndex, HasTransited: current.HasTransited}
 
 				if current.SID == destVirtualSID {
 					found = true
@@ -352,97 +354,195 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 
 				currTime := currentState.time
 				currCost := currentState.cost
-				currLastRID := current.lastRID
 
-				if arr, isArr := arrMap[current.SID]; isArr {
-					walkTime := arr.walkSec
-					nextTime := currTime + walkTime
-					walkCost := int(float64(walkTime) * walkMultiplier)
-					tentativeCost := currCost + walkCost
-					nextKey := stateKey{SID: destVirtualSID, lastRID: ""}
-
-					best, exists := visited[nextKey]
-					if !exists || tentativeCost < best.cost {
-						visited[nextKey] = routeNode{
-							time:    nextTime,
-							cost:    tentativeCost,
-							prevKey: currKey,
-							prevEdge: types.Edge{
-								FromSID: current.SID,
-								ToSID:   destVirtualSID,
-								Weight:  int(walkTime),
-							},
-							hasPrev: true,
-						}
-						queue.Push(queueNode{SID: destVirtualSID, lastRID: "", Priority: tentativeCost}, tentativeCost)
-					}
-				}
-
-				for _, edge := range e.Graph[current.SID] {
-					if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
-						continue
-					}
-
-					if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
-						continue
-					}
-
-					var nextTime uint32
-					var edgeCost int
-					nextLastRID := currLastRID
-
-					if edge.RID == "" {
-						if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+				if current.TripIndex > 0 {
+					for _, edge := range e.Graph[current.SID] {
+						if edge.RID == "" || ad.IsEdgeBlocked(&edge) {
 							continue
 						}
-						nextTime = currTime + uint32(edge.Weight)
-						edgeCost = int(float64(edge.Weight) * walkMultiplier)
-					} else {
-						if ad.IsEdgeBlocked(&edge) {
+						if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
 							continue
 						}
-						if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
+						if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
 							continue
 						}
-						depTime, arrTime, okNext := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
-						if !okNext {
-							continue
-						}
-						nextTime = arrTime
-						waitTime := int(depTime - currTime)
-						rideTime := int(arrTime - depTime)
 
-						if currLastRID == edge.RID {
-							edgeCost = int(float64(rideTime)*0.7) + waitTime
-						} else {
-							edgeCost = rideTime + int(float64(waitTime)*waitMultiplier)
-							if currLastRID != "" {
-								edgeCost += transferPenalty
-							}
+						sched, okTrip := utils.FindTripDeparture(edge.Schedules, current.TripIndex, currTime, activeServices)
+						if !okTrip {
+							continue
 						}
+
+						waitTime := int(sched.Dep - currTime)
+						rideTime := int(sched.Arr - sched.Dep)
+						edgeCost := int(float64(rideTime)*0.7) + waitTime
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
-						nextLastRID = edge.RID
+
+						tentativeCost := currCost + edgeCost
+						nextKey := stateKey{SID: edge.ToSID, TripIndex: current.TripIndex, HasTransited: true}
+
+						best, exists := visited[nextKey]
+						if !exists || tentativeCost < best.cost {
+							edgeCopy := edge
+							edgeCopy.TripIndex = current.TripIndex
+							edgeCopy.DepTime = sched.Dep
+							edgeCopy.ArrTime = sched.Arr
+							edgeCopy.Weight = int(sched.Arr - sched.Dep)
+							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
+								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
+							}
+
+							visited[nextKey] = routeNode{
+								time:     sched.Arr,
+								cost:     tentativeCost,
+								prevEdge: edgeCopy,
+								prevKey:  currKey,
+								hasPrev:  true,
+							}
+							queue.Push(queueNode{
+								SID:          edge.ToSID,
+								TripIndex:    current.TripIndex,
+								HasTransited: true,
+								Priority:     tentativeCost,
+							}, tentativeCost)
+						}
 					}
 
-					tentativeCost := currCost + edgeCost
-					nextKey := stateKey{SID: edge.ToSID, lastRID: nextLastRID}
-
-					best, exists := visited[nextKey]
-					if !exists || tentativeCost < best.cost {
-						visited[nextKey] = routeNode{
-							time:     nextTime,
-							cost:     tentativeCost,
-							prevEdge: edge,
+					alightKey := stateKey{SID: current.SID, TripIndex: 0, HasTransited: true}
+					bestAlight, existsAlight := visited[alightKey]
+					if !existsAlight || currCost < bestAlight.cost {
+						visited[alightKey] = routeNode{
+							time:     currTime,
+							cost:     currCost,
 							prevKey:  currKey,
+							prevEdge: types.Edge{FromSID: current.SID, ToSID: current.SID, Weight: 0},
 							hasPrev:  true,
 						}
 						queue.Push(queueNode{
-							SID:      edge.ToSID,
-							lastRID:  nextLastRID,
-							Priority: tentativeCost,
-						}, tentativeCost)
+							SID:          current.SID,
+							TripIndex:    0,
+							HasTransited: true,
+							Priority:     currCost,
+						}, currCost)
+					}
+				} else {
+					if arr, isArr := arrMap[current.SID]; isArr {
+						walkTime := arr.walkSec
+						nextTime := currTime + walkTime
+						walkCost := int(float64(walkTime) * walkMultiplier)
+						tentativeCost := currCost + walkCost
+						nextKey := stateKey{SID: destVirtualSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+						best, exists := visited[nextKey]
+						if !exists || tentativeCost < best.cost {
+							visited[nextKey] = routeNode{
+								time:    nextTime,
+								cost:    tentativeCost,
+								prevKey: currKey,
+								prevEdge: types.Edge{
+									FromSID: current.SID,
+									ToSID:   destVirtualSID,
+									Weight:  int(walkTime),
+								},
+								hasPrev: true,
+							}
+							queue.Push(queueNode{
+								SID:          destVirtualSID,
+								TripIndex:    0,
+								HasTransited: current.HasTransited,
+								Priority:     tentativeCost,
+							}, tentativeCost)
+						}
+					}
+
+					for _, edge := range e.Graph[current.SID] {
+						if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
+							continue
+						}
+						if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
+							continue
+						}
+
+						if edge.RID == "" {
+							if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+								continue
+							}
+							nextTime := currTime + uint32(edge.Weight)
+							edgeCost := int(float64(edge.Weight) * walkMultiplier)
+							tentativeCost := currCost + edgeCost
+							nextKey := stateKey{SID: edge.ToSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+							best, exists := visited[nextKey]
+							if !exists || tentativeCost < best.cost {
+								visited[nextKey] = routeNode{
+									time:     nextTime,
+									cost:     tentativeCost,
+									prevEdge: edge,
+									prevKey:  currKey,
+									hasPrev:  true,
+								}
+								queue.Push(queueNode{
+									SID:          edge.ToSID,
+									TripIndex:    0,
+									HasTransited: current.HasTransited,
+									Priority:     tentativeCost,
+								}, tentativeCost)
+							}
+						} else {
+							if ad.IsEdgeBlocked(&edge) || ad.IsStopBlocked(current.SID) {
+								continue
+							}
+
+							earliestDep := currTime
+							if current.HasTransited {
+								earliestDep = currTime + 120
+							}
+							sched, okNext := utils.FindNextDeparture(edge.Schedules, earliestDep, activeServices)
+							if !okNext {
+								continue
+							}
+
+							nextTime := sched.Arr
+							waitTime := int(sched.Dep - currTime)
+							rideTime := int(sched.Arr - sched.Dep)
+							edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
+							if current.HasTransited {
+								edgeCost += transferPenalty
+							}
+							if ad.IsEdgePerturbed(&edge) {
+								edgeCost += int(float64(rideTime)*0.3) + 60
+							}
+
+							tentativeCost := currCost + edgeCost
+							nextKey := stateKey{SID: edge.ToSID, TripIndex: sched.TripIndex, HasTransited: true}
+
+							best, exists := visited[nextKey]
+							if !exists || tentativeCost < best.cost {
+								edgeCopy := edge
+								edgeCopy.TripIndex = sched.TripIndex
+								edgeCopy.DepTime = sched.Dep
+								edgeCopy.ArrTime = sched.Arr
+								edgeCopy.Weight = int(sched.Arr - sched.Dep)
+								if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
+									edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+								}
+
+								visited[nextKey] = routeNode{
+									time:     nextTime,
+									cost:     tentativeCost,
+									prevEdge: edgeCopy,
+									prevKey:  currKey,
+									hasPrev:  true,
+								}
+								queue.Push(queueNode{
+									SID:          edge.ToSID,
+									TripIndex:    sched.TripIndex,
+									HasTransited: true,
+									Priority:     tentativeCost,
+								}, tentativeCost)
+							}
+						}
 					}
 				}
 			}
@@ -459,7 +559,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 				if !ok || !node.hasPrev {
 					break
 				}
-				path = append(path, node.prevEdge)
+				if !(node.prevEdge.FromSID == node.prevEdge.ToSID && node.prevEdge.Weight == 0) {
+					path = append(path, node.prevEdge)
+				}
 				currKey = node.prevKey
 			}
 
@@ -513,25 +615,28 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	}
 
 	type stateKey struct {
-		SID     string
-		lastRID string
+		SID          string
+		TripIndex    uint32
+		HasTransited bool
 	}
 
-	type nodeState struct {
-		time uint32
-		cost int
+	type routeNode struct {
+		time     uint32
+		cost     int
+		prevEdge types.Edge
+		prevKey  stateKey
+		hasPrev  bool
 	}
 
 	type queueNode struct {
-		SID      string
-		lastRID  string
-		Priority int
+		SID          string
+		TripIndex    uint32
+		HasTransited bool
+		Priority     int
 	}
 
 	queue := utils.NewPriorityQueue[queueNode]()
-	previous := make(map[stateKey]types.Edge)
-	previousKey := make(map[stateKey]stateKey)
-	bestStates := make(map[stateKey]nodeState)
+	visited := make(map[stateKey]routeNode, 4096)
 
 	targetTime := route.Config.TargetTime
 	if targetTime.IsZero() {
@@ -546,16 +651,18 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
 	startSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
-	startKey := stateKey{SID: fromSID, lastRID: ""}
-	bestStates[startKey] = nodeState{
-		time: startSec,
-		cost: 0,
+	startKey := stateKey{SID: fromSID, TripIndex: 0, HasTransited: false}
+	visited[startKey] = routeNode{
+		time:    startSec,
+		cost:    0,
+		hasPrev: false,
 	}
 
 	queue.Push(queueNode{
-		SID:      fromSID,
-		lastRID:  "",
-		Priority: 0,
+		SID:          fromSID,
+		TripIndex:    0,
+		HasTransited: false,
+		Priority:     0,
 	}, 0)
 
 	var destKey stateKey
@@ -567,7 +674,7 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 
 	for queue.Len() > 0 {
 		current, _ := queue.Pop()
-		currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
+		currKey := stateKey{SID: current.SID, TripIndex: current.TripIndex, HasTransited: current.HasTransited}
 
 		if current.SID == toSID || utils.IdRemoveIDFMPrefix(current.SID) == cleanToSID {
 			found = true
@@ -575,81 +682,175 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 			break
 		}
 
-		currentState := bestStates[currKey]
-		if current.Priority > currentState.cost {
+		currentState, ok := visited[currKey]
+		if !ok || current.Priority > currentState.cost {
 			continue
 		}
 
 		currTime := currentState.time
 		currCost := currentState.cost
-		currLastRID := current.lastRID
 
-		for _, edge := range e.Graph[current.SID] {
-			var nextTime uint32
-			var edgeCost int
-			nextLastRID := currLastRID
-
-			if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
-				continue
-			}
-
-			r, ok := routes[edge.RID]
-			if ok && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
-				continue
-			}
-
-			if edge.RID == "" {
-				if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+		if current.TripIndex > 0 {
+			for _, edge := range e.Graph[current.SID] {
+				if edge.RID == "" || ad.IsEdgeBlocked(&edge) {
 					continue
 				}
-				nextTime = currTime + uint32(edge.Weight)
-				edgeCost = int(float64(edge.Weight) * walkMultiplier)
-			} else {
-				if ad.IsEdgeBlocked(&edge) {
+				if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
 					continue
 				}
-				if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
-					continue
-				}
-				depTime, arrTime, ok := utils.FindNextDepartureWithDep(edge.Schedules, currTime, activeServices)
-				if !ok {
+				r, okR := routes[edge.RID]
+				if okR && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
 					continue
 				}
 
-				nextTime = arrTime
-				waitTime := int(depTime - currTime)
-				rideTime := int(arrTime - depTime)
-
-				if currLastRID == edge.RID {
-					edgeCost = int(float64(rideTime)*0.7) + waitTime
-				} else {
-					edgeCost = rideTime + int(float64(waitTime)*waitMultiplier)
-					if currLastRID != "" {
-						edgeCost += transferPenalty
-					}
+				sched, okTrip := utils.FindTripDeparture(edge.Schedules, current.TripIndex, currTime, activeServices)
+				if !okTrip {
+					continue
 				}
+
+				waitTime := int(sched.Dep - currTime)
+				rideTime := int(sched.Arr - sched.Dep)
+				edgeCost := int(float64(rideTime)*0.7) + waitTime
 				if ad.IsEdgePerturbed(&edge) {
 					edgeCost += int(float64(rideTime)*0.3) + 60
 				}
-				nextLastRID = edge.RID
+
+				tentativeCost := currCost + edgeCost
+				nextKey := stateKey{SID: edge.ToSID, TripIndex: current.TripIndex, HasTransited: true}
+
+				best, exists := visited[nextKey]
+				if !exists || tentativeCost < best.cost {
+					edgeCopy := edge
+					edgeCopy.TripIndex = current.TripIndex
+					edgeCopy.DepTime = sched.Dep
+					edgeCopy.ArrTime = sched.Arr
+					edgeCopy.Weight = int(sched.Arr - sched.Dep)
+					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
+						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
+					}
+
+					visited[nextKey] = routeNode{
+						time:     sched.Arr,
+						cost:     tentativeCost,
+						prevEdge: edgeCopy,
+						prevKey:  currKey,
+						hasPrev:  true,
+					}
+					queue.Push(queueNode{
+						SID:          edge.ToSID,
+						TripIndex:    current.TripIndex,
+						HasTransited: true,
+						Priority:     tentativeCost,
+					}, tentativeCost)
+				}
 			}
 
-			tentativeCost := currCost + edgeCost
-			nextKey := stateKey{SID: edge.ToSID, lastRID: nextLastRID}
-
-			best, exists := bestStates[nextKey]
-			if !exists || tentativeCost < best.cost {
-				bestStates[nextKey] = nodeState{
-					time: nextTime,
-					cost: tentativeCost,
+			alightKey := stateKey{SID: current.SID, TripIndex: 0, HasTransited: true}
+			bestAlight, existsAlight := visited[alightKey]
+			if !existsAlight || currCost < bestAlight.cost {
+				visited[alightKey] = routeNode{
+					time:     currTime,
+					cost:     currCost,
+					prevKey:  currKey,
+					prevEdge: types.Edge{FromSID: current.SID, ToSID: current.SID, Weight: 0},
+					hasPrev:  true,
 				}
-				previous[nextKey] = edge
-				previousKey[nextKey] = currKey
 				queue.Push(queueNode{
-					SID:      edge.ToSID,
-					lastRID:  nextLastRID,
-					Priority: tentativeCost,
-				}, tentativeCost)
+					SID:          current.SID,
+					TripIndex:    0,
+					HasTransited: true,
+					Priority:     currCost,
+				}, currCost)
+			}
+		} else {
+			for _, edge := range e.Graph[current.SID] {
+				if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
+					continue
+				}
+				r, okR := routes[edge.RID]
+				if okR && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
+					continue
+				}
+
+				if edge.RID == "" {
+					if ad.IsStopBlocked(current.SID) || ad.IsStopBlocked(edge.ToSID) {
+						continue
+					}
+					nextTime := currTime + uint32(edge.Weight)
+					edgeCost := int(float64(edge.Weight) * walkMultiplier)
+					tentativeCost := currCost + edgeCost
+					nextKey := stateKey{SID: edge.ToSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+					best, exists := visited[nextKey]
+					if !exists || tentativeCost < best.cost {
+						visited[nextKey] = routeNode{
+							time:     nextTime,
+							cost:     tentativeCost,
+							prevEdge: edge,
+							prevKey:  currKey,
+							hasPrev:  true,
+						}
+						queue.Push(queueNode{
+							SID:          edge.ToSID,
+							TripIndex:    0,
+							HasTransited: current.HasTransited,
+							Priority:     tentativeCost,
+						}, tentativeCost)
+					}
+				} else {
+					if ad.IsEdgeBlocked(&edge) || ad.IsStopBlocked(current.SID) {
+						continue
+					}
+
+					earliestDep := currTime
+					if current.HasTransited {
+						earliestDep = currTime + 120
+					}
+					sched, okNext := utils.FindNextDeparture(edge.Schedules, earliestDep, activeServices)
+					if !okNext {
+						continue
+					}
+
+					nextTime := sched.Arr
+					waitTime := int(sched.Dep - currTime)
+					rideTime := int(sched.Arr - sched.Dep)
+					edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
+					if current.HasTransited {
+						edgeCost += transferPenalty
+					}
+					if ad.IsEdgePerturbed(&edge) {
+						edgeCost += int(float64(rideTime)*0.3) + 60
+					}
+
+					tentativeCost := currCost + edgeCost
+					nextKey := stateKey{SID: edge.ToSID, TripIndex: sched.TripIndex, HasTransited: true}
+
+					best, exists := visited[nextKey]
+					if !exists || tentativeCost < best.cost {
+						edgeCopy := edge
+						edgeCopy.TripIndex = sched.TripIndex
+						edgeCopy.DepTime = sched.Dep
+						edgeCopy.ArrTime = sched.Arr
+						edgeCopy.Weight = int(sched.Arr - sched.Dep)
+						if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
+							edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+						}
+
+						visited[nextKey] = routeNode{
+							time:     nextTime,
+							cost:     tentativeCost,
+							prevEdge: edgeCopy,
+							prevKey:  currKey,
+							hasPrev:  true,
+						}
+						queue.Push(queueNode{
+							SID:          edge.ToSID,
+							TripIndex:    sched.TripIndex,
+							HasTransited: true,
+							Priority:     tentativeCost,
+						}, tentativeCost)
+					}
+				}
 			}
 		}
 	}
@@ -661,13 +862,15 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	currKey := destKey
 	var path []types.Edge
 
-	for currKey.SID != fromSID {
-		edge, ok := previous[currKey]
-		if !ok {
-			return nil, fmt.Errorf("no path found")
+	for {
+		node, ok := visited[currKey]
+		if !ok || !node.hasPrev {
+			break
 		}
-		path = append(path, edge)
-		currKey = previousKey[currKey]
+		if !(node.prevEdge.FromSID == node.prevEdge.ToSID && node.prevEdge.Weight == 0) {
+			path = append(path, node.prevEdge)
+		}
+		currKey = node.prevKey
 	}
 
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
@@ -961,8 +1164,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 			}
 
 			type stateKey struct {
-				SID     string
-				lastRID string
+				SID          string
+				TripIndex    uint32
+				HasTransited bool
 			}
 			type routeNode struct {
 				time     uint32
@@ -972,9 +1176,10 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 				hasPrev  bool
 			}
 			type queueNode struct {
-				SID      string
-				lastRID  string
-				Priority int
+				SID          string
+				TripIndex    uint32
+				HasTransited bool
+				Priority     int
 			}
 
 			queue := utils.NewPriorityQueue[queueNode]()
@@ -987,9 +1192,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 				}
 				initTime := targetSec - arr.walkSec
 				initCost := int(float64(arr.walkSec) * route.Factors.Walk)
-				key := stateKey{SID: arr.stop.SID, lastRID: ""}
+				key := stateKey{SID: arr.stop.SID, TripIndex: 0, HasTransited: false}
 				visited[key] = routeNode{time: initTime, cost: initCost, hasPrev: false}
-				queue.Push(queueNode{SID: arr.stop.SID, lastRID: "", Priority: initCost}, initCost)
+				queue.Push(queueNode{SID: arr.stop.SID, TripIndex: 0, HasTransited: false, Priority: initCost}, initCost)
 			}
 
 			var originKey stateKey
@@ -1001,7 +1206,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 
 			for queue.Len() > 0 {
 				current, _ := queue.Pop()
-				currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
+				currKey := stateKey{SID: current.SID, TripIndex: current.TripIndex, HasTransited: current.HasTransited}
 
 				if current.SID == originVirtualSID {
 					found = true
@@ -1016,104 +1221,206 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 
 				currTime := currentState.time
 				currCost := currentState.cost
-				currLastRID := current.lastRID
 
-				if dep, isDep := depCandidateMap[current.SID]; isDep {
-					if currTime >= dep.timeSec {
-						originDepTime := currTime - dep.timeSec
-						depCost := dep.costSec
-						if dep.mode == "walk" {
-							depCost = int(float64(dep.costSec) * walkMultiplier)
-						}
-						tentativeCost := currCost + depCost
-						nextKey := stateKey{SID: originVirtualSID, lastRID: ""}
-
-						best, exists := visited[nextKey]
-						if !exists || tentativeCost < best.cost {
-							visited[nextKey] = routeNode{
-								time:    originDepTime,
-								cost:    tentativeCost,
-								prevKey: currKey,
-								prevEdge: types.Edge{
-									FromSID: originVirtualSID,
-									ToSID:   current.SID,
-									Weight:  int(dep.timeSec),
-								},
-								hasPrev: true,
-							}
-							queue.Push(queueNode{SID: originVirtualSID, lastRID: "", Priority: tentativeCost}, tentativeCost)
-						}
-					}
-				}
-
-				for _, edge := range e.ReverseGraph[current.SID] {
-					if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
-						continue
-					}
-
-					if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
-						continue
-					}
-
-					var prevTime uint32
-					var edgeCost int
-					nextLastRID := currLastRID
-
-					if edge.RID == "" {
-						if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+				if current.TripIndex > 0 {
+					for _, edge := range e.ReverseGraph[current.SID] {
+						if edge.RID == "" || ad.IsEdgeBlocked(&edge) {
 							continue
 						}
-						if currTime < uint32(edge.Weight) {
+						if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
 							continue
 						}
-						prevTime = currTime - uint32(edge.Weight)
-						edgeCost = int(float64(edge.Weight) * walkMultiplier)
-					} else {
-						if ad.IsEdgeBlocked(&edge) {
+						if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
 							continue
 						}
-						if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
-							continue
-						}
-						depTime, arrTime, okPrev := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
-						if !okPrev {
-							continue
-						}
-						prevTime = depTime
-						waitTime := int(currTime - arrTime)
-						rideTime := int(arrTime - depTime)
 
-						if currLastRID == edge.RID {
-							edgeCost = int(float64(rideTime)*0.7) + waitTime
-						} else {
-							edgeCost = rideTime + int(float64(waitTime)*waitMultiplier)
-							if currLastRID != "" {
-								edgeCost += transferPenalty
-							}
+						sched, okTrip := utils.FindTripArrival(edge.Schedules, current.TripIndex, currTime, activeServices)
+						if !okTrip {
+							continue
 						}
+
+						waitTime := int(currTime - sched.Arr)
+						rideTime := int(sched.Arr - sched.Dep)
+						edgeCost := int(float64(rideTime)*0.7) + waitTime
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
-						nextLastRID = edge.RID
+
+						tentativeCost := currCost + edgeCost
+						nextKey := stateKey{SID: edge.FromSID, TripIndex: current.TripIndex, HasTransited: true}
+
+						best, exists := visited[nextKey]
+						if !exists || tentativeCost < best.cost {
+							edgeCopy := edge
+							edgeCopy.TripIndex = current.TripIndex
+							edgeCopy.DepTime = sched.Dep
+							edgeCopy.ArrTime = sched.Arr
+							edgeCopy.Weight = int(sched.Arr - sched.Dep)
+							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
+								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
+							}
+
+							visited[nextKey] = routeNode{
+								time:     sched.Dep,
+								cost:     tentativeCost,
+								prevEdge: edgeCopy,
+								prevKey:  currKey,
+								hasPrev:  true,
+							}
+							queue.Push(queueNode{
+								SID:          edge.FromSID,
+								TripIndex:    current.TripIndex,
+								HasTransited: true,
+								Priority:     tentativeCost,
+							}, tentativeCost)
+						}
 					}
 
-					tentativeCost := currCost + edgeCost
-					nextKey := stateKey{SID: edge.FromSID, lastRID: nextLastRID}
-
-					best, exists := visited[nextKey]
-					if !exists || tentativeCost < best.cost {
-						visited[nextKey] = routeNode{
-							time:     prevTime,
-							cost:     tentativeCost,
-							prevEdge: edge,
+					boardKey := stateKey{SID: current.SID, TripIndex: 0, HasTransited: true}
+					bestBoard, existsBoard := visited[boardKey]
+					if !existsBoard || currCost < bestBoard.cost {
+						visited[boardKey] = routeNode{
+							time:     currTime,
+							cost:     currCost,
 							prevKey:  currKey,
+							prevEdge: types.Edge{FromSID: current.SID, ToSID: current.SID, Weight: 0},
 							hasPrev:  true,
 						}
 						queue.Push(queueNode{
-							SID:      edge.FromSID,
-							lastRID:  nextLastRID,
-							Priority: tentativeCost,
-						}, tentativeCost)
+							SID:          current.SID,
+							TripIndex:    0,
+							HasTransited: true,
+							Priority:     currCost,
+						}, currCost)
+					}
+				} else {
+					if dep, isDep := depCandidateMap[current.SID]; isDep {
+						if currTime >= dep.timeSec {
+							originDepTime := currTime - dep.timeSec
+							depCost := dep.costSec
+							if dep.mode == "walk" {
+								depCost = int(float64(dep.costSec) * walkMultiplier)
+							}
+							tentativeCost := currCost + depCost
+							nextKey := stateKey{SID: originVirtualSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+							best, exists := visited[nextKey]
+							if !exists || tentativeCost < best.cost {
+								visited[nextKey] = routeNode{
+									time:    originDepTime,
+									cost:    tentativeCost,
+									prevKey: currKey,
+									prevEdge: types.Edge{
+										FromSID: originVirtualSID,
+										ToSID:   current.SID,
+										Weight:  int(dep.timeSec),
+									},
+									hasPrev: true,
+								}
+								queue.Push(queueNode{
+									SID:          originVirtualSID,
+									TripIndex:    0,
+									HasTransited: current.HasTransited,
+									Priority:     tentativeCost,
+								}, tentativeCost)
+							}
+						}
+					}
+
+					for _, edge := range e.ReverseGraph[current.SID] {
+						if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
+							continue
+						}
+						if len(disallowedRoutes) > 0 && disallowedRoutes[edge.RID] {
+							continue
+						}
+
+						if edge.RID == "" {
+							if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+								continue
+							}
+							if currTime < uint32(edge.Weight) {
+								continue
+							}
+							prevTime := currTime - uint32(edge.Weight)
+							edgeCost := int(float64(edge.Weight) * walkMultiplier)
+							tentativeCost := currCost + edgeCost
+							nextKey := stateKey{SID: edge.FromSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+							best, exists := visited[nextKey]
+							if !exists || tentativeCost < best.cost {
+								visited[nextKey] = routeNode{
+									time:     prevTime,
+									cost:     tentativeCost,
+									prevEdge: edge,
+									prevKey:  currKey,
+									hasPrev:  true,
+								}
+								queue.Push(queueNode{
+									SID:          edge.FromSID,
+									TripIndex:    0,
+									HasTransited: current.HasTransited,
+									Priority:     tentativeCost,
+								}, tentativeCost)
+							}
+						} else {
+							if ad.IsEdgeBlocked(&edge) || ad.IsStopBlocked(current.SID) {
+								continue
+							}
+
+							latestArr := currTime
+							if current.HasTransited {
+								if currTime < 120 {
+									continue
+								}
+								latestArr = currTime - 120
+							}
+
+							sched, okPrev := utils.FindPrevDeparture(edge.Schedules, latestArr, activeServices)
+							if !okPrev {
+								continue
+							}
+
+							prevTime := sched.Dep
+							waitTime := int(currTime - sched.Arr)
+							rideTime := int(sched.Arr - sched.Dep)
+							edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
+							if current.HasTransited {
+								edgeCost += transferPenalty
+							}
+							if ad.IsEdgePerturbed(&edge) {
+								edgeCost += int(float64(rideTime)*0.3) + 60
+							}
+
+							tentativeCost := currCost + edgeCost
+							nextKey := stateKey{SID: edge.FromSID, TripIndex: sched.TripIndex, HasTransited: true}
+
+							best, exists := visited[nextKey]
+							if !exists || tentativeCost < best.cost {
+								edgeCopy := edge
+								edgeCopy.TripIndex = sched.TripIndex
+								edgeCopy.DepTime = sched.Dep
+								edgeCopy.ArrTime = sched.Arr
+								edgeCopy.Weight = int(sched.Arr - sched.Dep)
+								if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
+									edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+								}
+
+								visited[nextKey] = routeNode{
+									time:     prevTime,
+									cost:     tentativeCost,
+									prevEdge: edgeCopy,
+									prevKey:  currKey,
+									hasPrev:  true,
+								}
+								queue.Push(queueNode{
+									SID:          edge.FromSID,
+									TripIndex:    sched.TripIndex,
+									HasTransited: true,
+									Priority:     tentativeCost,
+								}, tentativeCost)
+							}
+						}
 					}
 				}
 			}
@@ -1130,7 +1437,9 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 				if !ok || !node.hasPrev {
 					break
 				}
-				path = append(path, node.prevEdge)
+				if !(node.prevEdge.FromSID == node.prevEdge.ToSID && node.prevEdge.Weight == 0) {
+					path = append(path, node.prevEdge)
+				}
 				currKey = node.prevKey
 			}
 
@@ -1160,11 +1469,12 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	}
 
 	type stateKey struct {
-		SID     string
-		lastRID string
+		SID          string
+		TripIndex    uint32
+		HasTransited bool
 	}
 
-	type nodeState struct {
+	type routeNode struct {
 		time     uint32
 		cost     int
 		prevEdge types.Edge
@@ -1173,13 +1483,14 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	}
 
 	type queueNode struct {
-		SID      string
-		lastRID  string
-		Priority int
+		SID          string
+		TripIndex    uint32
+		HasTransited bool
+		Priority     int
 	}
 
 	queue := utils.NewPriorityQueue[queueNode]()
-	bestStates := make(map[stateKey]nodeState)
+	visited := make(map[stateKey]routeNode, 4096)
 
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
@@ -1194,17 +1505,18 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	}
 
 	targetSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
-	startKey := stateKey{SID: toSID, lastRID: ""}
-	bestStates[startKey] = nodeState{
+	startKey := stateKey{SID: toSID, TripIndex: 0, HasTransited: false}
+	visited[startKey] = routeNode{
 		time:    targetSec,
 		cost:    0,
 		hasPrev: false,
 	}
 
 	queue.Push(queueNode{
-		SID:      toSID,
-		lastRID:  "",
-		Priority: 0,
+		SID:          toSID,
+		TripIndex:    0,
+		HasTransited: false,
+		Priority:     0,
 	}, 0)
 
 	var originKey stateKey
@@ -1216,7 +1528,7 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 
 	for queue.Len() > 0 {
 		current, _ := queue.Pop()
-		currKey := stateKey{SID: current.SID, lastRID: current.lastRID}
+		currKey := stateKey{SID: current.SID, TripIndex: current.TripIndex, HasTransited: current.HasTransited}
 
 		if current.SID == fromSID || utils.IdRemoveIDFMPrefix(current.SID) == cleanFromSID {
 			found = true
@@ -1224,85 +1536,182 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 			break
 		}
 
-		currentState := bestStates[currKey]
-		if current.Priority > currentState.cost {
+		currentState, ok := visited[currKey]
+		if !ok || current.Priority > currentState.cost {
 			continue
 		}
 
 		currTime := currentState.time
 		currCost := currentState.cost
-		currLastRID := current.lastRID
 
-		for _, edge := range e.ReverseGraph[current.SID] {
-			var prevTime uint32
-			var edgeCost int
-			nextLastRID := currLastRID
-
-			if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
-				continue
-			}
-
-			r, ok := routes[edge.RID]
-			if ok && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
-				continue
-			}
-
-			if edge.RID == "" {
-				if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+		if current.TripIndex > 0 {
+			for _, edge := range e.ReverseGraph[current.SID] {
+				if edge.RID == "" || ad.IsEdgeBlocked(&edge) {
 					continue
 				}
-				if currTime < uint32(edge.Weight) {
+				if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
 					continue
 				}
-				prevTime = currTime - uint32(edge.Weight)
-				edgeCost = int(float64(edge.Weight) * walkMultiplier)
-			} else {
-				if ad.IsEdgeBlocked(&edge) {
-					continue
-				}
-				if currLastRID != "" && currLastRID != edge.RID && ad.IsStopBlocked(current.SID) {
-					continue
-				}
-				depTime, arrTime, okNext := utils.FindPrevDepartureWithArr(edge.Schedules, currTime, activeServices)
-				if !okNext {
+				r, okR := routes[edge.RID]
+				if okR && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
 					continue
 				}
 
-				prevTime = depTime
-				waitTime := int(currTime - arrTime)
-				rideTime := int(arrTime - depTime)
-
-				if currLastRID == edge.RID {
-					edgeCost = int(float64(rideTime)*0.7) + waitTime
-				} else {
-					edgeCost = rideTime + int(float64(waitTime)*waitMultiplier)
-					if currLastRID != "" {
-						edgeCost += transferPenalty
-					}
+				sched, okTrip := utils.FindTripArrival(edge.Schedules, current.TripIndex, currTime, activeServices)
+				if !okTrip {
+					continue
 				}
+
+				waitTime := int(currTime - sched.Arr)
+				rideTime := int(sched.Arr - sched.Dep)
+				edgeCost := int(float64(rideTime)*0.7) + waitTime
 				if ad.IsEdgePerturbed(&edge) {
 					edgeCost += int(float64(rideTime)*0.3) + 60
 				}
-				nextLastRID = edge.RID
+
+				tentativeCost := currCost + edgeCost
+				nextKey := stateKey{SID: edge.FromSID, TripIndex: current.TripIndex, HasTransited: true}
+
+				best, exists := visited[nextKey]
+				if !exists || tentativeCost < best.cost {
+					edgeCopy := edge
+					edgeCopy.TripIndex = current.TripIndex
+					edgeCopy.DepTime = sched.Dep
+					edgeCopy.ArrTime = sched.Arr
+					edgeCopy.Weight = int(sched.Arr - sched.Dep)
+					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
+						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
+					}
+
+					visited[nextKey] = routeNode{
+						time:     sched.Dep,
+						cost:     tentativeCost,
+						prevEdge: edgeCopy,
+						prevKey:  currKey,
+						hasPrev:  true,
+					}
+					queue.Push(queueNode{
+						SID:          edge.FromSID,
+						TripIndex:    current.TripIndex,
+						HasTransited: true,
+						Priority:     tentativeCost,
+					}, tentativeCost)
+				}
 			}
 
-			tentativeCost := currCost + edgeCost
-			nextKey := stateKey{SID: edge.FromSID, lastRID: nextLastRID}
-
-			best, exists := bestStates[nextKey]
-			if !exists || tentativeCost < best.cost {
-				bestStates[nextKey] = nodeState{
-					time:     prevTime,
-					cost:     tentativeCost,
-					prevEdge: edge,
+			boardKey := stateKey{SID: current.SID, TripIndex: 0, HasTransited: true}
+			bestBoard, existsBoard := visited[boardKey]
+			if !existsBoard || currCost < bestBoard.cost {
+				visited[boardKey] = routeNode{
+					time:     currTime,
+					cost:     currCost,
 					prevKey:  currKey,
+					prevEdge: types.Edge{FromSID: current.SID, ToSID: current.SID, Weight: 0},
 					hasPrev:  true,
 				}
 				queue.Push(queueNode{
-					SID:      edge.FromSID,
-					lastRID:  nextLastRID,
-					Priority: tentativeCost,
-				}, tentativeCost)
+					SID:          current.SID,
+					TripIndex:    0,
+					HasTransited: true,
+					Priority:     currCost,
+				}, currCost)
+			}
+		} else {
+			for _, edge := range e.ReverseGraph[current.SID] {
+				if !utils.IsAccessible(edge.Wheelchair, route.Config.WheelchairOnly) {
+					continue
+				}
+				r, okR := routes[edge.RID]
+				if okR && len(route.Config.AllowedModes) > 0 && !utils.CheckAllowedRouteType(r.RType, route.Config.AllowedModes) {
+					continue
+				}
+
+				if edge.RID == "" {
+					if ad.IsStopBlocked(edge.FromSID) || ad.IsStopBlocked(edge.ToSID) {
+						continue
+					}
+					if currTime < uint32(edge.Weight) {
+						continue
+					}
+					prevTime := currTime - uint32(edge.Weight)
+					edgeCost := int(float64(edge.Weight) * walkMultiplier)
+					tentativeCost := currCost + edgeCost
+					nextKey := stateKey{SID: edge.FromSID, TripIndex: 0, HasTransited: current.HasTransited}
+
+					best, exists := visited[nextKey]
+					if !exists || tentativeCost < best.cost {
+						visited[nextKey] = routeNode{
+							time:     prevTime,
+							cost:     tentativeCost,
+							prevEdge: edge,
+							prevKey:  currKey,
+							hasPrev:  true,
+						}
+						queue.Push(queueNode{
+							SID:          edge.FromSID,
+							TripIndex:    0,
+							HasTransited: current.HasTransited,
+							Priority:     tentativeCost,
+						}, tentativeCost)
+					}
+				} else {
+					if ad.IsEdgeBlocked(&edge) || ad.IsStopBlocked(current.SID) {
+						continue
+					}
+
+					latestArr := currTime
+					if current.HasTransited {
+						if currTime < 120 {
+							continue
+						}
+						latestArr = currTime - 120
+					}
+
+					sched, okPrev := utils.FindPrevDeparture(edge.Schedules, latestArr, activeServices)
+					if !okPrev {
+						continue
+					}
+
+					prevTime := sched.Dep
+					waitTime := int(currTime - sched.Arr)
+					rideTime := int(sched.Arr - sched.Dep)
+					edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
+					if current.HasTransited {
+						edgeCost += transferPenalty
+					}
+					if ad.IsEdgePerturbed(&edge) {
+						edgeCost += int(float64(rideTime)*0.3) + 60
+					}
+
+					tentativeCost := currCost + edgeCost
+					nextKey := stateKey{SID: edge.FromSID, TripIndex: sched.TripIndex, HasTransited: true}
+
+					best, exists := visited[nextKey]
+					if !exists || tentativeCost < best.cost {
+						edgeCopy := edge
+						edgeCopy.TripIndex = sched.TripIndex
+						edgeCopy.DepTime = sched.Dep
+						edgeCopy.ArrTime = sched.Arr
+						edgeCopy.Weight = int(sched.Arr - sched.Dep)
+						if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
+							edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+						}
+
+						visited[nextKey] = routeNode{
+							time:     prevTime,
+							cost:     tentativeCost,
+							prevEdge: edgeCopy,
+							prevKey:  currKey,
+							hasPrev:  true,
+						}
+						queue.Push(queueNode{
+							SID:          edge.FromSID,
+							TripIndex:    sched.TripIndex,
+							HasTransited: true,
+							Priority:     tentativeCost,
+						}, tentativeCost)
+					}
+				}
 			}
 		}
 	}
@@ -1315,11 +1724,13 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	var path []types.Edge
 
 	for {
-		node, ok := bestStates[currKey]
+		node, ok := visited[currKey]
 		if !ok || !node.hasPrev {
 			break
 		}
-		path = append(path, node.prevEdge)
+		if !(node.prevEdge.FromSID == node.prevEdge.ToSID && node.prevEdge.Weight == 0) {
+			path = append(path, node.prevEdge)
+		}
 		currKey = node.prevKey
 	}
 
