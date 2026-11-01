@@ -29,7 +29,6 @@ func main() {
 		TargetTime:   depTarget,
 		TimeType:     types.TimeTypeDeparture,
 		AllowedModes: []types.RouteType{types.RouteTypeTrain, types.RouteTypeMetro, types.RouteTypeBus, types.RouteTypeTram},
-		WithCar:      false,
 		WithBike:     true,
 	}
 
@@ -65,7 +64,6 @@ func main() {
 		TargetTime:   arrTarget,
 		TimeType:     types.TimeTypeArrival,
 		AllowedModes: []types.RouteType{types.RouteTypeTrain, types.RouteTypeMetro, types.RouteTypeBus, types.RouteTypeTram},
-		WithCar:      false,
 		WithBike:     true,
 	}
 

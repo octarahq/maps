@@ -309,6 +309,8 @@ func (e *Engine) edgesToParsedTripDeparture(
 		trip.TransfersCount = 0
 	}
 
+	e.populatePositionsInTrain(trip)
+
 	return trip
 }
 
@@ -613,5 +615,78 @@ func (e *Engine) edgesToParsedTripArrival(
 		trip.TransfersCount = 0
 	}
 
+	e.populatePositionsInTrain(trip)
+
 	return trip
 }
+
+func (e *Engine) populatePositionsInTrain(trip *types.ParsedTrip) {
+	if trip == nil || len(trip.Legs) == 0 || len(e.Net.PositionsInTrain) == 0 {
+		return
+	}
+	pitMap := utils.IndexPositionInTrainsByTripKey(e.Net.PositionsInTrain)
+
+	byFromAndLine := make(map[string]types.PositionInTrain, len(e.Net.PositionsInTrain))
+	for _, pit := range e.Net.PositionsInTrain {
+		k := fmt.Sprintf("%s;%s", utils.IdRemoveIDFMPrefix(pit.FromSID), utils.IdRemoveIDFMPrefix(pit.RID))
+		if _, exists := byFromAndLine[k]; !exists {
+			byFromAndLine[k] = pit
+		}
+	}
+
+	for i := range trip.Legs {
+		leg := &trip.Legs[i]
+		if leg.Type != types.LegTypeTransit || leg.Route == nil {
+			continue
+		}
+
+		var targetStops []string
+		for j := i + 1; j < len(trip.Legs); j++ {
+			next := &trip.Legs[j]
+			if next.FromSID != "" {
+				targetStops = append(targetStops, next.FromSID)
+			}
+			if next.ToSID != "" {
+				targetStops = append(targetStops, next.ToSID)
+			}
+			if next.Type == types.LegTypeTransit {
+				break
+			}
+		}
+
+		found := false
+		for _, target := range targetStops {
+			key := fmt.Sprintf("%s-%s;%s", leg.ToSID, target, leg.Route.RID)
+			if tPos, ok := pitMap[key]; ok {
+				leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			key := fmt.Sprintf("%s-%s;%s", leg.FromSID, leg.ToSID, leg.Route.RID)
+			if tPos, ok := pitMap[key]; ok {
+				leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
+				found = true
+			}
+		}
+
+		if !found {
+			k := fmt.Sprintf("%s;%s", leg.ToSID, leg.Route.RID)
+			if tPos, ok := byFromAndLine[k]; ok {
+				leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
+				found = true
+			}
+		}
+
+		if !found {
+			k := fmt.Sprintf("%s;%s", leg.FromSID, leg.Route.RID)
+			if tPos, ok := byFromAndLine[k]; ok {
+				leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
+				found = true
+			}
+		}
+	}
+}
+
