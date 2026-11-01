@@ -59,6 +59,16 @@ func init() {
 
 			stops := e.SearchParentsStopsByName(q)
 
+			for i := range stops {
+				stops[i].PID = utils.IdRemoveIDFMPrefix(stops[i].PID)
+				for j := range stops[i].ChildrenStops {
+					stops[i].ChildrenStops[j] = utils.IdRemoveIDFMPrefix(stops[i].ChildrenStops[j])
+				}
+				for j := range stops[i].Routes {
+					stops[i].Routes[j].RID = utils.IdRemoveIDFMPrefix(stops[i].Routes[j].RID)
+				}
+			}
+
 			if hasCoords && len(stops) > 0 {
 				sort.SliceStable(stops, func(i, j int) bool {
 					hasI := stops[i].Lat != 0 || stops[i].Lon != 0
@@ -108,6 +118,10 @@ func init() {
 				return
 			}
 
+			cleanStop := stop
+			cleanStop.SID = utils.IdRemoveIDFMPrefix(stop.SID)
+			cleanStop.ParentStation = utils.IdRemoveIDFMPrefix(stop.ParentStation)
+
 			targetTime := time.Now()
 			if timeParam := c.Query("time"); timeParam != "" {
 				if t, err := time.Parse(time.RFC3339, timeParam); err == nil {
@@ -128,7 +142,7 @@ func init() {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"stop":       stop,
+				"stop":       cleanStop,
 				"departures": departures,
 			})
 		},
@@ -164,6 +178,10 @@ func init() {
 			}
 
 			nStops := e.SearchStopsByNeerCord(lon, lat, maxK)
+			for i := range nStops {
+				nStops[i].SID = utils.IdRemoveIDFMPrefix(nStops[i].SID)
+				nStops[i].ParentStation = utils.IdRemoveIDFMPrefix(nStops[i].ParentStation)
+			}
 
 			c.JSON(http.StatusOK, gin.H{
 				"stops": nStops,

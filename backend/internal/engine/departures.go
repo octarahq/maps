@@ -78,8 +78,13 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 			waitMin = 0
 		}
 
+		cleanRID := utils.IdRemoveIDFMPrefix(route.RID)
+		if cleanRID == "" {
+			cleanRID = utils.IdRemoveIDFMPrefix(edge.RID)
+		}
+
 		results = append(results, types.DepartureInfo{
-			RID:         route.RID,
+			RID:         cleanRID,
 			RName:       name,
 			RColor:      route.Color,
 			RType:       route.RType,
@@ -107,17 +112,31 @@ func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	year, month, day := targetTime.Date()
 	baseDate := time.Date(year, month, day, 0, 0, 0, 0, targetTime.Location())
+
 	routes := utils.IndexRoutesByID(e.Net.Routes)
-	route := routes[rid]
+	cleanRID := utils.IdRemoveIDFMPrefix(rid)
+	route, ok := routes[rid]
+	if !ok {
+		route, ok = routes[cleanRID]
+	}
+	if !ok {
+		route, ok = routes["IDFM:"+cleanRID]
+	}
+
 	name := route.SName
 	if name == "" {
 		name = route.LName
+	}
+	cleanRouteRID := utils.IdRemoveIDFMPrefix(route.RID)
+	if cleanRouteRID == "" {
+		cleanRouteRID = cleanRID
 	}
 
 	results := make(map[string][]types.DepartureInfo)
 	for stopID, edges := range e.Graph {
 		for _, edge := range edges {
-			if edge.RID != rid {
+			edgeCleanRID := utils.IdRemoveIDFMPrefix(edge.RID)
+			if edge.RID != rid && edgeCleanRID != cleanRID && edgeCleanRID != cleanRouteRID {
 				continue
 			}
 
@@ -132,8 +151,9 @@ func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map
 				waitMin = 0
 			}
 
-			results[stopID] = append(results[stopID], types.DepartureInfo{
-				RID:         route.RID,
+			cleanStopID := utils.IdRemoveIDFMPrefix(stopID)
+			results[cleanStopID] = append(results[cleanStopID], types.DepartureInfo{
+				RID:         cleanRouteRID,
 				RName:       name,
 				RColor:      route.Color,
 				RType:       route.RType,

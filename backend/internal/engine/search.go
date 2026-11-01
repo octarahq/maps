@@ -176,14 +176,17 @@ func (e *Engine) SearchStopById(query string) (types.Stop, bool) {
 	cleanQ := utils.IdRemoveIDFMPrefix(query)
 	for _, stop := range e.Net.Stops {
 		if stop.SID == query || utils.IdRemoveIDFMPrefix(stop.SID) == cleanQ {
-			return stop, true
+			cleanStop := stop
+			cleanStop.SID = utils.IdRemoveIDFMPrefix(stop.SID)
+			cleanStop.ParentStation = utils.IdRemoveIDFMPrefix(stop.ParentStation)
+			return cleanStop, true
 		}
 	}
 
 	for _, ps := range e.Net.ParentsStations {
 		if ps.PID == query || utils.IdRemoveIDFMPrefix(ps.PID) == cleanQ {
 			return types.Stop{
-				SID:        ps.PID,
+				SID:        utils.IdRemoveIDFMPrefix(ps.PID),
 				Name:       ps.Name,
 				Lat:        ps.Lat,
 				Long:       ps.Lon,
@@ -199,7 +202,9 @@ func (e *Engine) SearchParentsStopById(query string) (types.ParentsStation, bool
 	cleanQ := utils.IdRemoveIDFMPrefix(query)
 	for _, ps := range e.Net.ParentsStations {
 		if ps.PID == query || utils.IdRemoveIDFMPrefix(ps.PID) == cleanQ {
-			return ps, true
+			cleanPS := ps
+			cleanPS.PID = utils.IdRemoveIDFMPrefix(ps.PID)
+			return cleanPS, true
 		}
 	}
 	return types.ParentsStation{}, false
@@ -231,7 +236,10 @@ func (e *Engine) SearchStopsByNeerCord(lon, lat float64, maxK int) []types.Stop 
 
 	result := make([]types.Stop, 0, len(stops))
 	for _, nearby := range stops {
-		result = append(result, nearby.stop)
+		s := nearby.stop
+		s.SID = utils.IdRemoveIDFMPrefix(s.SID)
+		s.ParentStation = utils.IdRemoveIDFMPrefix(s.ParentStation)
+		result = append(result, s)
 	}
 
 	return result

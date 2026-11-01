@@ -170,12 +170,13 @@ func EnrichParentsStations(net *types.Network) {
 	for i := range net.ParentsStations {
 		p := &net.ParentsStations[i]
 		cleanPID := IdRemoveIDFMPrefix(p.PID)
+		p.PID = cleanPID
 		children := childrenByParent[cleanPID]
 
 		if len(children) > 0 {
 			p.ChildrenStops = make([]string, 0, len(children))
 			for _, c := range children {
-				p.ChildrenStops = append(p.ChildrenStops, c.SID)
+				p.ChildrenStops = append(p.ChildrenStops, IdRemoveIDFMPrefix(c.SID))
 			}
 		}
 
@@ -232,7 +233,7 @@ func EnrichParentsStations(net *types.Network) {
 				seenRoutes[key] = true
 
 				p.Routes = append(p.Routes, types.ParentsStationRoute{
-					RID:   r.RID,
+					RID:   IdRemoveIDFMPrefix(r.RID),
 					Name:  name,
 					Color: r.Color,
 					RType: r.RType,
