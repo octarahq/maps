@@ -4,7 +4,9 @@
     "clean": true,
     "exclude": [
       "data",
-      "images"
+      "images",
+      ".vscode",
+      "android"
     ]
   }
 }

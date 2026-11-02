@@ -3,3 +3,4 @@ data/
 # Orion CLI
 .orion/
 maps
+.vscode/
