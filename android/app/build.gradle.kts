@@ -57,4 +57,6 @@ dependencies {
     implementation(libs.ktor.serialization.json)
 
     implementation("androidx.compose.material:material-icons-extended")
+
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }
