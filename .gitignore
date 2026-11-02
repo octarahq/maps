@@ -4,3 +4,6 @@ data/
 .orion/
 maps
 .vscode/
+android/app/build
+android/.gradle
+android/.kotlin
