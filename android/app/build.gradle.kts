@@ -48,10 +48,13 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.material3)
+    implementation(libs.material.icons.extended)
     implementation(libs.maplibre.android)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
+
+    implementation("androidx.compose.material:material-icons-extended")
 }

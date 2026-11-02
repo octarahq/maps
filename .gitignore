@@ -2,7 +2,7 @@ data/
 .env
 # Orion CLI
 .orion/
-maps
+/maps
 .vscode/
 android/app/build
 android/.gradle

@@ -12,5 +12,5 @@ The best navigation maps for the IDFM network. (for now only the transit engine 
 
 ## Use
 
-To test the engine, you can use the small website provided in the repository : https://4021.fr1.orionhost.xyz/
+To test the engine, you can use the small website provided in the repository : https://omaps-calc.orionhost.app/
 ![website demo](images/website-demo.png)

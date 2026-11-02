@@ -19,6 +19,9 @@ run-android:
 	cd android && ./gradlew assembleDebug --build-cache
 	adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 	adb shell am start -n com.octara.maps/.MainActivity -S
+
+android-compileSources:
+	cd android && ./gradlew compileDebugSources
 	
 data-build:
 	go run ./backend/cmd/builder/main.go --input ./data/raw --output ./data/processed/network.bin
