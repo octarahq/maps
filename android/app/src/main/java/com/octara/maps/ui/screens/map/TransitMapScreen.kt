@@ -10,15 +10,18 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.ui.theme.AppDimensions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransitMapScreen(
-    onSearchClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSearchClick: (() -> Unit)? = null
 ) {
+    val router = LocalRouter.current
     val scaffoldState = rememberBottomSheetScaffoldState()
 
     BottomSheetScaffold(
@@ -34,7 +37,7 @@ fun TransitMapScreen(
             ) {
                 AppSearchBar(
                     active = false,
-                    onClick = onSearchClick
+                    onClick = onSearchClick ?: { router.navigateTo(Screen.Search) }
                 )
             }
         },

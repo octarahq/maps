@@ -1,56 +1,56 @@
 package com.octara.maps.ui.screens.search
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AirlineSeatReclineExtra
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Train
+import androidx.compose.material.icons.filled.Tram
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Train
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Tram
-import androidx.compose.material.icons.filled.Subway
-import androidx.compose.material.icons.filled.AirlineSeatReclineExtra
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier as ComposeModifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
+import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.navigation.Router
+import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.utils.LocationHelper
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.lazy.items
 
 @Composable
 fun SearchScreen(
     onBack: () -> Unit,
     modifier: ComposeModifier = ComposeModifier
 ) {
+    val router = LocalRouter.current
     var query by remember { mutableStateOf("") }
-    var stops by remember { mutableStateOf<List<com.octara.maps.types.ParentStop>>(emptyList())}
+    var stops by remember { mutableStateOf<List<com.octara.maps.types.ParentStop>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -82,7 +82,6 @@ fun SearchScreen(
                 isLoading = isLoading
             )
 
-
             LaunchedEffect(query) {
                 if (query.length < 2) {
                     isLoading = false
@@ -113,7 +112,7 @@ fun SearchScreen(
                     .padding(horizontal = 16.dp)
             ) {
                 items(stops) { stop ->
-                    SearchResultItem(stop = stop)
+                    SearchResultItem(stop = stop, router = router)
                 }
             }
         }
@@ -122,11 +121,13 @@ fun SearchScreen(
 
 @Composable
 fun SearchResultItem(
-    stop: com.octara.maps.types.ParentStop
+    stop: com.octara.maps.types.ParentStop,
+    router: Router = LocalRouter.current
 ) {
     Row(
         modifier = ComposeModifier
             .fillMaxWidth()
+            .clickable { router.navigateTo(Screen.StopInfo(stop.id)) }
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -147,11 +148,11 @@ fun SearchResultItem(
                     "RAIL" -> Icons.Default.Train
                     else -> Icons.Default.LocationOn
                 },
-                contentDescription = "Icône de localisation",
+                contentDescription = "Icône de transport",
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
-        androidx.compose.material3.Text(
+        Text(
             text = stop.name,
             style = MaterialTheme.typography.bodyLarge,
             modifier = ComposeModifier.padding(vertical = 8.dp)

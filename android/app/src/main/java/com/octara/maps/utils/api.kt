@@ -86,4 +86,22 @@ class Api {
         val response: StopResponse = fetchGET(url)
         response.stops ?: emptyList()
     }
+
+    private data class StopInfoResponse(
+        val stop: Stop,
+        val departures: List<StopDeparture>?
+    )
+
+    suspend fun getStopById(
+        id: String,
+    ): StopWithDepartures = withContext(Dispatchers.IO) {
+        val encodedQuery = URLEncoder.encode(id, "UTF-8")
+        val url = "$BASE_URL/stops/$id"
+
+        val response: StopInfoResponse = fetchGET(url)
+        StopWithDepartures(
+            stop = response.stop,
+            departures = response.departures ?: emptyList()
+        )
+    }
 }

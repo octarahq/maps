@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 sealed interface Screen {
     data object Map : Screen
     data object Search : Screen
+    data class StopInfo(val stopId: String) : Screen
 }
 
 class Router(initialScreen: Screen = Screen.Map) {
@@ -22,7 +23,10 @@ class Router(initialScreen: Screen = Screen.Map) {
     val canGoBack: Boolean
         get() = backStack.size > 1
 
-    fun navigateTo(screen: Screen) {
+    fun navigateTo(screen: Screen, popCurrent: Boolean = false) {
+        if (popCurrent && backStack.size > 1) {
+            backStack.removeAt(backStack.size - 1)
+        }
         if (currentScreen != screen) {
             backStack.add(screen)
             currentScreen = screen
@@ -37,10 +41,19 @@ class Router(initialScreen: Screen = Screen.Map) {
         }
         return false
     }
+
+    fun popToRoot() {
+        if (backStack.size > 1) {
+            val root = backStack.first()
+            backStack.clear()
+            backStack.add(root)
+            currentScreen = root
+        }
+    }
 }
 
 val LocalRouter: ProvidableCompositionLocal<Router> = compositionLocalOf {
-    error("router not provided")
+    error("no router provided")
 }
 
 @Composable

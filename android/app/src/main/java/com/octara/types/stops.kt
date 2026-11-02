@@ -82,3 +82,7 @@ data class ParentStop(
     val children_stops: List<String>,
     val routes: List<ParentStopRoute>
 )
+
+data class Stop(
+    val
+)

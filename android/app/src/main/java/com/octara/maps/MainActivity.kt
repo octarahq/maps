@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
+import com.octara.maps.ui.screens.map.StopInfoScreen
 import com.octara.maps.ui.screens.map.TransitMapScreen
 import com.octara.maps.ui.screens.search.SearchScreen
 import com.octara.maps.utils.LocationHelper
@@ -120,12 +121,22 @@ fun MapsApp() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            TransitMapScreen(
-                onSearchClick = { router.navigateTo(Screen.Search) }
-            )
+            when (val screen = router.currentScreen) {
+                is Screen.Map, is Screen.Search -> {
+                    TransitMapScreen(
+                        onSearchClick = { router.navigateTo(Screen.Search) }
+                    )
+                }
+                is Screen.StopInfo -> {
+                    StopInfoScreen(
+                        stopId = screen.stopId,
+                        onBack = { router.goBack() }
+                    )
+                }
+            }
 
             AnimatedVisibility(
-                visible = router.currentScreen == Screen.Search,
+                visible = router.currentScreen is Screen.Search,
                 enter = fadeIn() + slideInVertically { it / 6 },
                 exit = fadeOut() + slideOutVertically { it / 6 }
             ) {
