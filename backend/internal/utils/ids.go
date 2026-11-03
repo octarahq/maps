@@ -16,3 +16,26 @@ func IdRemoveIDFMPrefix(id string) string {
 	res = strings.ReplaceAll(res, "StopPlace:", "")
 	return strings.TrimSpace(res)
 }
+
+func ExtractPictoID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	const marker = "/files/"
+	if idx := strings.Index(raw, marker); idx != -1 {
+		rest := raw[idx+len(marker):]
+		end := strings.IndexAny(rest, "/?# )\"'\n\r\t")
+		if end != -1 {
+			return rest[:end]
+		}
+		return rest
+	}
+
+	raw = strings.Trim(raw, "()[]")
+	if end := strings.IndexAny(raw, "/?# )\"'\n\r\t"); end != -1 {
+		return raw[:end]
+	}
+	return raw
+}
