@@ -12,5 +12,6 @@ object AppDimensions {
     val BottomSheetCornerRadius = 24.dp
     val BottomSheetShape = RoundedCornerShape(topStart = BottomSheetCornerRadius, topEnd = BottomSheetCornerRadius)
     val BottomSheetPeekHeight = 110.dp
+    val StopInfoSheetPeekHeight = 340.dp
     val BottomSheetElevation = 8.dp
 }

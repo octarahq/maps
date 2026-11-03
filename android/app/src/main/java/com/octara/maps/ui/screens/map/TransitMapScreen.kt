@@ -15,6 +15,23 @@ import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.ui.theme.AppDimensions
 
+@Composable
+fun TransitMapSheetContent(
+    onSearchClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        AppSearchBar(
+            active = false,
+            onClick = onSearchClick
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransitMapScreen(
@@ -30,16 +47,9 @@ fun TransitMapScreen(
         sheetPeekHeight = AppDimensions.BottomSheetPeekHeight,
         sheetShadowElevation = AppDimensions.BottomSheetElevation,
         sheetContent = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                AppSearchBar(
-                    active = false,
-                    onClick = onSearchClick ?: { router.navigateTo(Screen.Search) }
-                )
-            }
+            TransitMapSheetContent(
+                onSearchClick = onSearchClick ?: { router.navigateTo(Screen.Search) }
+            )
         },
         modifier = modifier.fillMaxSize()
     ) {

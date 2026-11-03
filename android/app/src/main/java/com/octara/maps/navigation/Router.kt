@@ -11,7 +11,12 @@ import androidx.compose.runtime.setValue
 sealed interface Screen {
     data object Map : Screen
     data object Search : Screen
-    data class StopInfo(val stopId: String) : Screen
+    data class StopInfo(
+        val stopId: String,
+        val lat: Double? = null,
+        val lon: Double? = null,
+        val name: String? = null
+    ) : Screen
 }
 
 class Router(initialScreen: Screen = Screen.Map) {

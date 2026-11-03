@@ -76,6 +76,12 @@ fun SearchScreen(
             AppSearchBar(
                 query = query,
                 onQueryChange = { query = it },
+                onSearch = {
+                    if (query.startsWith("IDFM:")) {
+                        val id = query.removePrefix("IDFM:")
+                        router.navigateTo(Screen.StopInfo(id), popCurrent = true)
+                    }
+                },
                 active = true,
                 autoFocus = true,
                 onBack = onBack,
@@ -128,7 +134,17 @@ fun SearchResultItem(
     Row(
         modifier = ComposeModifier
             .fillMaxWidth()
-            .clickable { router.navigateTo(Screen.StopInfo(stop.id)) }
+            .clickable {
+                router.navigateTo(
+                    Screen.StopInfo(
+                        stopId = stop.id,
+                        lat = stop.lat.toDouble(),
+                        lon = stop.lon.toDouble(),
+                        name = stop.name
+                    ),
+                    popCurrent = true
+                )
+            }
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically

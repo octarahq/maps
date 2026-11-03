@@ -48,8 +48,19 @@ data class Route(
     val type: RouteType = RouteType.BUS,
     val color: String = "",
     val tcolor: String = "",
-    val picto: String = ""
+    val picto: String? = ""
 ) {
     val name: String
-        get() = if (short_name.isNotEmpty()) short_name else long_name
+        get() = if (!short_name.isNullOrEmpty()) short_name else (long_name ?: "")
+    val typeName: String
+        get() = when (type) {
+            RouteType.TRAM -> "Tramway"
+            RouteType.METRO -> "Metro"
+            RouteType.TRAIN -> "Train"
+            RouteType.BUS -> "Bus"
+            RouteType.FERRY -> "Ferry"
+            RouteType.CABLE_TRAM -> "Cable Tram"
+            RouteType.AERIAL_LIFT -> "Aerial Lift"
+            RouteType.FUNICULAR -> "Funiculaire"
+        }
 }

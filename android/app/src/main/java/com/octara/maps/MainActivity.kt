@@ -18,28 +18,47 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
-import com.octara.maps.ui.screens.map.StopInfoScreen
-import com.octara.maps.ui.screens.map.TransitMapScreen
+import com.octara.maps.ui.screens.map.StopInfoSheetContent
+import com.octara.maps.ui.screens.map.TransitMap
+import com.octara.maps.ui.screens.map.TransitMapSheetContent
 import com.octara.maps.ui.screens.search.SearchScreen
+import com.octara.maps.ui.theme.AppDimensions
 import com.octara.maps.utils.LocationHelper
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
+import org.maplibre.android.geometry.LatLng
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,12 +89,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapsApp() {
     val router = rememberRouter()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val locationHelper = remember { LocationHelper(context) }
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
 
     var userCoords by remember { mutableStateOf(Pair(48.8566f, 2.3522f)) }
 
@@ -113,6 +135,40 @@ fun MapsApp() {
         }
     }
 
+    val currentScreen = router.currentScreen
+    val isStopInfo = currentScreen is Screen.StopInfo
+
+    var targetCoords by remember { mutableStateOf<LatLng?>(null) }
+    var targetTitle by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentScreen) {
+        if (currentScreen is Screen.StopInfo) {
+            if (currentScreen.lat != null && currentScreen.lon != null) {
+                targetCoords = LatLng(currentScreen.lat, currentScreen.lon)
+                targetTitle = currentScreen.name
+            }
+        } else if (currentScreen is Screen.Map) {
+            targetCoords = null
+            targetTitle = null
+        }
+    }
+
+    val stopInfoPeekHeight = remember(configuration.screenHeightDp) {
+        (configuration.screenHeightDp.dp * 0.42f)
+            .coerceIn(AppDimensions.StopInfoSheetPeekHeight, 420.dp)
+    }
+
+    val sheetPeekHeight = if (isStopInfo) stopInfoPeekHeight else AppDimensions.BottomSheetPeekHeight
+    val sheetPeekHeightPx = with(density) { sheetPeekHeight.roundToPx() }
+
+    val scaffoldState = rememberBottomSheetScaffoldState()
+
+    LaunchedEffect(isStopInfo) {
+        try {
+            scaffoldState.bottomSheetState.partialExpand()
+        } catch (_: Exception) {}
+    }
+
     CompositionLocalProvider(
         LocalRouter provides router
     ) {
@@ -121,17 +177,71 @@ fun MapsApp() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            when (val screen = router.currentScreen) {
-                is Screen.Map, is Screen.Search -> {
-                    TransitMapScreen(
-                        onSearchClick = { router.navigateTo(Screen.Search) }
+            BottomSheetScaffold(
+                scaffoldState = scaffoldState,
+                sheetShape = AppDimensions.BottomSheetShape,
+                sheetPeekHeight = sheetPeekHeight,
+                sheetShadowElevation = AppDimensions.BottomSheetElevation,
+                sheetContent = {
+                    when (val screen = router.currentScreen) {
+                        is Screen.StopInfo -> {
+                            key(screen.stopId) {
+                                StopInfoSheetContent(
+                                    stopId = screen.stopId,
+                                    onStopLoaded = { lat, lon, name ->
+                                        if (targetCoords == null) {
+                                            targetCoords = LatLng(lat, lon)
+                                            targetTitle = name
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        else -> {
+                            TransitMapSheetContent(
+                                onSearchClick = { router.navigateTo(Screen.Search) }
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    TransitMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraTarget = targetCoords,
+                        cameraZoom = 15.5,
+                        bottomPaddingPx = if (isStopInfo) sheetPeekHeightPx else with(density) { AppDimensions.BottomSheetPeekHeight.roundToPx() },
+                        markerPosition = targetCoords,
+                        markerTitle = targetTitle
                     )
-                }
-                is Screen.StopInfo -> {
-                    StopInfoScreen(
-                        stopId = screen.stopId,
-                        onBack = { router.goBack() }
-                    )
+
+                    AnimatedVisibility(
+                        visible = isStopInfo,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .padding(start = 16.dp, top = 8.dp)
+                            .align(Alignment.TopStart)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            shadowElevation = 4.dp
+                        ) {
+                            IconButton(
+                                onClick = { router.goBack() },
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Retour",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

@@ -63,13 +63,14 @@ data class Stop(
 )
 
 data class Departure(
-    val route_id: String,
-    val route_name: String,
-    val color: String,
-    val type: RouteType,
-    val headsign: String,
-    val dep_sec: Int,
-    val time: String,
-    val time_string: String,
-    val wait_minutes: Float,
+    val route_id: String? = "",
+    val route_name: String? = "",
+    val color: String? = "",
+    val type: RouteType? = RouteType.BUS,
+    val headsign: String? = "",
+    val dep_sec: Int = 0,
+    val time: String? = "",
+    val time_string: String? = "",
+    val wait_minutes: Float = 0f,
+    val picto: String? = ""
 )

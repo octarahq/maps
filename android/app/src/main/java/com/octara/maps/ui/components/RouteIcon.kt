@@ -39,6 +39,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
+import com.octara.maps.types.Departure
 
 fun getRoutePictoResourceUrl(pictoId: String): String {
     return "https://data.iledefrance-mobilites.fr/explore/dataset/referentiel-des-lignes/files/$pictoId/download/"
@@ -72,20 +73,20 @@ fun RouteBadgeFallback(
     modifier: Modifier = Modifier,
     height: Dp = 24.dp
 ) {
-    val bgColor = parseHexColor(route.color, MaterialTheme.colorScheme.primary)
+    val bgColor = parseHexColor(route.color ?: "", MaterialTheme.colorScheme.primary)
     val defaultTextColor = if (route.type == RouteType.TRAM) {
         MaterialTheme.colorScheme.onSurface
     } else {
         val luminance = 0.299 * bgColor.red + 0.587 * bgColor.green + 0.114 * bgColor.blue
         if (luminance > 0.6) Color.Black else Color.White
     }
-    val textColor = if (route.tcolor.isNotBlank()) {
+    val textColor = if (!route.tcolor.isNullOrBlank()) {
         parseHexColor(route.tcolor, defaultTextColor)
     } else {
         defaultTextColor
     }
 
-    val displayName = route.name.ifEmpty { route.short_name.ifEmpty { route.id } }
+    val displayName = route.name.ifEmpty { (route.short_name ?: "").ifEmpty { route.id ?: "" } }
 
     when (route.type) {
         RouteType.METRO -> {
@@ -210,8 +211,9 @@ fun RouteIcon(
     route: Route,
     modifier: Modifier = Modifier.height(24.dp)
 ) {
-    if (route.picto.isNotBlank()) {
-        val pictoUrl = getRoutePictoResourceUrl(route.picto)
+    val picto = route.picto ?: ""
+    if (picto.isNotBlank()) {
+        val pictoUrl = getRoutePictoResourceUrl(picto)
         val painter = rememberAsyncImagePainter(model = pictoUrl)
         val state = painter.state
 
@@ -220,7 +222,7 @@ fun RouteIcon(
         } else {
             Image(
                 painter = painter,
-                contentDescription = "${route.short_name} picto",
+                contentDescription = "${route.short_name ?: ""} picto",
                 modifier = modifier.wrapContentWidth(),
                 contentScale = ContentScale.Fit
             )
@@ -233,6 +235,30 @@ fun RouteIcon(
 @Composable
 fun RoutePicto(
     route: Route,
+    modifier: Modifier = Modifier.height(24.dp)
+) = RouteIcon(route, modifier)
+
+@Composable
+fun RouteIcon(
+    route: Departure,
+    modifier: Modifier = Modifier.height(24.dp)
+) {
+    RouteIcon(
+        route = Route(
+            id = route.route_id ?: "",
+            short_name = route.route_name ?: "",
+            type = route.type ?: RouteType.BUS,
+            color = route.color ?: "",
+            tcolor = "",
+            picto = route.picto ?: ""
+        ),
+        modifier = modifier
+    )
+}
+
+@Composable
+fun RoutePicto(
+    route: Departure,
     modifier: Modifier = Modifier.height(24.dp)
 ) = RouteIcon(route, modifier)
 
