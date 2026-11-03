@@ -42,6 +42,7 @@ import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.utils.LocationHelper
 import kotlinx.coroutines.delay
+import com.octara.maps.ui.components.getStopIconResource
 
 @Composable
 fun SearchScreen(
@@ -140,14 +141,7 @@ fun SearchResultItem(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = when (stop.type.toString().uppercase()) {
-                    "LIFT" -> Icons.Default.AirlineSeatReclineExtra
-                    "METRO" -> Icons.Default.Subway
-                    "STREET_BUS" -> Icons.Default.DirectionsBus
-                    "STREET_TRAM" -> Icons.Default.Tram
-                    "RAIL" -> Icons.Default.Train
-                    else -> Icons.Default.LocationOn
-                },
+                imageVector = getStopIconResource(stop.type),
                 contentDescription = "Icône de transport",
                 tint = MaterialTheme.colorScheme.primary,
             )

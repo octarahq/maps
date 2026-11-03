@@ -7,7 +7,9 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.octara.maps.types.ParentStop
-import com.octara.maps.types.ParentType
+import com.octara.maps.types.Stop
+import com.octara.maps.types.Departure
+import com.octara.maps.types.StopType
 import com.octara.maps.types.RouteType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,17 +23,17 @@ class Api {
     }
 
     val gson: Gson = GsonBuilder()
-            .registerTypeAdapter(ParentType::class.java, object : TypeAdapter<ParentType>() {
-                override fun write(out: JsonWriter, value: ParentType?) {
+            .registerTypeAdapter(StopType::class.java, object : TypeAdapter<StopType>() {
+                override fun write(out: JsonWriter, value: StopType?) {
                     out.value(value?.value ?: 0)
                 }
-                override fun read(reader: JsonReader): ParentType {
+                override fun read(reader: JsonReader): StopType {
                     if (reader.peek() == JsonToken.NULL) {
                         reader.nextNull()
-                        return ParentType.UNKNOWN
+                        return StopType.UNKNOWN
                     }
                     val intVal = reader.nextInt()
-                    return ParentType.fromValue(intVal)
+                    return StopType.fromValue(intVal)
                 }
             })
             .registerTypeAdapter(RouteType::class.java, object : TypeAdapter<RouteType>() {
@@ -87,21 +89,17 @@ class Api {
         response.stops ?: emptyList()
     }
 
-    private data class StopInfoResponse(
+    public data class StopInfoResponse(
         val stop: Stop,
-        val departures: List<StopDeparture>?
+        val departures: List<Departure>?
     )
 
     suspend fun getStopById(
         id: String,
-    ): StopWithDepartures = withContext(Dispatchers.IO) {
-        val encodedQuery = URLEncoder.encode(id, "UTF-8")
+    ): StopInfoResponse = withContext(Dispatchers.IO) {
         val url = "$BASE_URL/stops/$id"
 
         val response: StopInfoResponse = fetchGET(url)
-        StopWithDepartures(
-            stop = response.stop,
-            departures = response.departures ?: emptyList()
-        )
+        response
     }
 }

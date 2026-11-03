@@ -6,8 +6,8 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 
-@JsonAdapter(ParentType.Adapter::class)
-enum class ParentType(val value: Int) {
+@JsonAdapter(StopType.Adapter::class)
+enum class StopType(val value: Int) {
     UNKNOWN(0),
     LIFT(1),
     METRO(2),
@@ -16,16 +16,16 @@ enum class ParentType(val value: Int) {
     RAIL(5);
 
     companion object {
-        fun fromValue(value: Int): ParentType =
+        fun fromValue(value: Int): StopType =
             entries.firstOrNull { it.value == value } ?: UNKNOWN
     }
 
-    class Adapter : TypeAdapter<ParentType>() {
-        override fun write(out: JsonWriter, value: ParentType?) {
+    class Adapter : TypeAdapter<StopType>() {
+        override fun write(out: JsonWriter, value: StopType?) {
             out.value(value?.value ?: UNKNOWN.value)
         }
 
-        override fun read(reader: JsonReader): ParentType {
+        override fun read(reader: JsonReader): StopType {
             if (reader.peek() == JsonToken.NULL) {
                 reader.nextNull()
                 return UNKNOWN
@@ -76,7 +76,7 @@ data class ParentStopRoute(
 data class ParentStop(
     val id: String,
     val name: String,
-    val type: ParentType,
+    val type: StopType,
     val lat: Float,
     val lon: Float,
     val children_stops: List<String>,
@@ -84,5 +84,23 @@ data class ParentStop(
 )
 
 data class Stop(
-    val
+    val id: String,
+    val name: String,
+    val lat: Float,
+    val lon: Float,
+    val zone: String,
+    val parent_station: String,
+    val wheelchair: Accessibility,
+)
+
+data class Departure(
+    val route_id: String,
+    val route_name: String,
+    val color: String,
+    val type: RouteType,
+    val headsign: String,
+    val dep_sec: Int,
+    val time: String,
+    val time_string: String,
+    val wait_minutes: Float,
 )
