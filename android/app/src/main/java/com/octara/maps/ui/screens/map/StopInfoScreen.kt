@@ -32,6 +32,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetScaffoldState
@@ -224,12 +226,25 @@ private fun RouteDepartureCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StopInfoSheetContent(
     stopId: String,
     modifier: Modifier = Modifier,
+    sheetState: SheetState? = null,
+    onClose: (() -> Unit)? = null,
     onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null
 ) {
+    val router = LocalRouter.current
+
+     if (sheetState != null) {
+        LaunchedEffect(sheetState.currentValue) {
+            if (sheetState.currentValue == SheetValue.Hidden) {
+                onClose?.invoke() ?: router.goBack()
+            }
+        }
+    }
+
     var isLoading by remember { mutableStateOf(true) }
     var stopInfo by remember { mutableStateOf<Api.StopInfoResponse?>(null) }
 
