@@ -35,37 +35,6 @@ enum class StopType(val value: Int) {
     }
 }
 
-@JsonAdapter(RouteType.Adapter::class)
-enum class RouteType(val value: Int) {
-    TRAM(0),
-    METRO(1),
-    TRAIN(2),
-    BUS(3),
-    FERRY(4),
-    CABLE_TRAM(5),
-    AERIAL_LIFT(6),
-    FUNICULAR(7);
-
-    companion object {
-        fun fromValue(value: Int): RouteType =
-            entries.firstOrNull { it.value == value } ?: BUS
-    }
-
-    class Adapter : TypeAdapter<RouteType>() {
-        override fun write(out: JsonWriter, value: RouteType?) {
-            out.value(value?.value ?: BUS.value)
-        }
-
-        override fun read(reader: JsonReader): RouteType {
-            if (reader.peek() == JsonToken.NULL) {
-                reader.nextNull()
-                return BUS
-            }
-            return fromValue(reader.nextInt())
-        }
-    }
-}
-
 data class ParentStopRoute(
     val id: String,
     val name: String,

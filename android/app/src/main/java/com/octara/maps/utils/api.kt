@@ -8,6 +8,7 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.octara.maps.types.ParentStop
 import com.octara.maps.types.Stop
+import com.octara.maps.types.Route
 import com.octara.maps.types.Departure
 import com.octara.maps.types.StopType
 import com.octara.maps.types.RouteType
@@ -23,33 +24,35 @@ class Api {
     }
 
     val gson: Gson = GsonBuilder()
-            .registerTypeAdapter(StopType::class.java, object : TypeAdapter<StopType>() {
-                override fun write(out: JsonWriter, value: StopType?) {
-                    out.value(value?.value ?: 0)
+        .registerTypeAdapter(StopType::class.java, object : TypeAdapter<StopType>() {
+            override fun write(out: JsonWriter, value: StopType?) {
+                out.value(value?.value ?: 0)
+            }
+
+            override fun read(reader: JsonReader): StopType {
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull()
+                    return StopType.UNKNOWN
                 }
-                override fun read(reader: JsonReader): StopType {
-                    if (reader.peek() == JsonToken.NULL) {
-                        reader.nextNull()
-                        return StopType.UNKNOWN
-                    }
-                    val intVal = reader.nextInt()
-                    return StopType.fromValue(intVal)
+                val intVal = reader.nextInt()
+                return StopType.fromValue(intVal)
+            }
+        })
+        .registerTypeAdapter(RouteType::class.java, object : TypeAdapter<RouteType>() {
+            override fun write(out: JsonWriter, value: RouteType?) {
+                out.value(value?.value ?: 3)
+            }
+
+            override fun read(reader: JsonReader): RouteType {
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull()
+                    return RouteType.BUS
                 }
-            })
-            .registerTypeAdapter(RouteType::class.java, object : TypeAdapter<RouteType>() {
-                override fun write(out: JsonWriter, value: RouteType?) {
-                    out.value(value?.value ?: 3)
-                }
-                override fun read(reader: JsonReader): RouteType {
-                    if (reader.peek() == JsonToken.NULL) {
-                        reader.nextNull()
-                        return RouteType.BUS
-                    }
-                    val intVal = reader.nextInt()
-                    return RouteType.fromValue(intVal)
-                }
-            })
-            .create()
+                val intVal = reader.nextInt()
+                return RouteType.fromValue(intVal)
+            }
+        })
+        .create()
 
     inline fun <reified T> fetchGET(url: String): T {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -91,7 +94,8 @@ class Api {
 
     public data class StopInfoResponse(
         val stop: Stop,
-        val departures: List<Departure>?
+        val departures: List<Departure>?,
+        val routes: List<Route>?
     )
 
     suspend fun getStopById(
