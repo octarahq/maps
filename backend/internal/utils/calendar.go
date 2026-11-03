@@ -112,6 +112,7 @@ func (ci *CalendarIndex) GetActiveServices(target time.Time) []bool {
 	if ci == nil {
 		return nil
 	}
+	target = InParis(target)
 
 	ci.mu.RLock()
 	totalServices := len(ci.idToService)

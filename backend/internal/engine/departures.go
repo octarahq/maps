@@ -10,9 +10,7 @@ import (
 )
 
 func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) []types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
@@ -88,6 +86,7 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 			RName:       name,
 			RColor:      route.Color,
 			RType:       route.RType,
+			Picto:       route.Picto,
 			Headsign:    edge.Headsign,
 			DepSec:      int(sched.Dep),
 			Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),
@@ -104,9 +103,7 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 }
 
 func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map[string][]types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
@@ -157,6 +154,7 @@ func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map
 				RName:       name,
 				RColor:      route.Color,
 				RType:       route.RType,
+				Picto:       route.Picto,
 				Headsign:    edge.Headsign,
 				DepSec:      int(sched.Dep),
 				Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),

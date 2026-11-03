@@ -36,10 +36,8 @@ func (e *Engine) EdgesToParsedTrip(
 	firstStop := e.getStopFromIndex(edges[0].FromSID, stops)
 	lastStop := e.getStopFromIndex(edges[len(edges)-1].ToSID, stops)
 
-	targetTime := config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime := utils.InParis(config.TargetTime)
+	config.TargetTime = targetTime
 
 	year, month, day := targetTime.Date()
 	baseDate := time.Date(year, month, day, 0, 0, 0, 0, targetTime.Location())
@@ -215,6 +213,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 					RouteType: route.RType,
 					Color:     route.Color,
 					TextColor: route.TColor,
+					Picto:     route.Picto,
 				}
 
 				tPos, hasPos := utils.IndexPositionInTrainsByTripKey(e.Net.PositionsInTrain)[fmt.Sprintf("%s-%s;%s", utils.IdRemoveIDFMPrefix(edge.FromSID), utils.IdRemoveIDFMPrefix(edge.ToSID), utils.IdRemoveIDFMPrefix(edge.RID))]
@@ -592,6 +591,7 @@ func (e *Engine) edgesToParsedTripArrival(
 					RouteType: route.RType,
 					Color:     route.Color,
 					TextColor: route.TColor,
+					Picto:     route.Picto,
 				}
 				tPos, hasPos := utils.IndexPositionInTrainsByTripKey(e.Net.PositionsInTrain)[fmt.Sprintf("%s-%s;%s", utils.IdRemoveIDFMPrefix(edge.FromSID), utils.IdRemoveIDFMPrefix(edge.ToSID), utils.IdRemoveIDFMPrefix(edge.RID))]
 				if hasPos {

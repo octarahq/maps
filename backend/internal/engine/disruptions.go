@@ -172,9 +172,7 @@ type ActiveDisruptions struct {
 }
 
 func (e *Engine) GetActiveDisruptions(targetTime time.Time) *ActiveDisruptions {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	ad := &ActiveDisruptions{
 		BlockedStops:     make(map[string]bool),

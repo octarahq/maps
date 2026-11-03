@@ -147,6 +147,7 @@ type Route struct {
 	RType    RouteType `csv:"route_type" json:"type"`
 	Color    string    `csv:"route_color" json:"color"`
 	TColor   string    `csv:"route_text_color" json:"tcolor"`
+	Picto    string    `json:"picto"`
 }
 
 type Trip struct {
@@ -191,6 +192,12 @@ type ParentsStationRoute struct {
 	Name  string    `json:"name"`
 	Color string    `json:"color"`
 	RType RouteType `json:"type"`
+	Picto string    `json:"picto,omitempty"`
+}
+
+type LineReferentiel struct {
+	IDLine string `csv:"id_line|ID_Line" json:"id_line"`
+	Picto  string `csv:"picto|Picto" json:"picto"`
 }
 
 type PositionInTrain struct {

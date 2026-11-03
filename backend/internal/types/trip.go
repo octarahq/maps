@@ -61,6 +61,7 @@ type RouteSummary struct {
 	RouteType RouteType `json:"route_type"`
 	Color     string    `json:"color"`
 	TextColor string    `json:"text_color"`
+	Picto     string    `json:"picto,omitempty"`
 }
 
 type IntermediateStop struct {
