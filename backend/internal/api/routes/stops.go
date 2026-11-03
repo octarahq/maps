@@ -1,9 +1,12 @@
 package routes
 
 import (
+	"cmp"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"maps/backend/internal/engine"
@@ -118,6 +121,110 @@ func init() {
 				return
 			}
 
+			routesMap := utils.IndexRoutesByID(e.Net.Routes)
+			cleanSID := utils.IdRemoveIDFMPrefix(stop.SID)
+
+			var targetStopIDs []string
+			if stop.ParentStation == "" {
+				seenChildren := make(map[string]bool)
+				if ps, ok := e.SearchParentsStopById(stop.SID); ok {
+					for _, c := range ps.ChildrenStops {
+						cleanC := utils.IdRemoveIDFMPrefix(c)
+						if cleanC != "" && !seenChildren[cleanC] {
+							seenChildren[cleanC] = true
+							targetStopIDs = append(targetStopIDs, cleanC)
+						}
+					}
+				}
+				for _, s := range e.Net.Stops {
+					if s.ParentStation != "" && utils.IdRemoveIDFMPrefix(s.ParentStation) == cleanSID {
+						cleanC := utils.IdRemoveIDFMPrefix(s.SID)
+						if cleanC != "" && !seenChildren[cleanC] {
+							seenChildren[cleanC] = true
+							targetStopIDs = append(targetStopIDs, cleanC)
+						}
+					}
+				}
+				if len(targetStopIDs) == 0 {
+					targetStopIDs = append(targetStopIDs, cleanSID)
+				}
+			} else {
+				targetStopIDs = append(targetStopIDs, cleanSID)
+			}
+
+			seenRouteIDs := make(map[string]bool)
+			routes := make([]types.Route, 0)
+
+			addRoute := func(r types.Route) {
+				cleanRID := utils.IdRemoveIDFMPrefix(r.RID)
+				if cleanRID == "" || seenRouteIDs[cleanRID] {
+					return
+				}
+				seenRouteIDs[cleanRID] = true
+				cleanRoute := r
+				cleanRoute.RID = cleanRID
+				routes = append(routes, cleanRoute)
+			}
+
+			if stop.ParentStation == "" {
+				if ps, ok := e.SearchParentsStopById(stop.SID); ok {
+					for _, pr := range ps.Routes {
+						if r, found := routesMap[pr.RID]; found {
+							addRoute(r)
+						} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(pr.RID)]; found {
+							addRoute(r)
+						}
+					}
+				}
+			}
+
+			for _, sidTarget := range targetStopIDs {
+				cleanTarget := utils.IdRemoveIDFMPrefix(sidTarget)
+				keys := []string{sidTarget, cleanTarget, "IDFM:" + cleanTarget, "stop_point:IDFM:" + cleanTarget, "stop_area:IDFM:" + cleanTarget}
+				seenKeys := make(map[string]bool)
+				for _, k := range keys {
+					if k == "" || seenKeys[k] {
+						continue
+					}
+					seenKeys[k] = true
+					for _, edge := range e.Graph[k] {
+						if edge.RID == "" {
+							continue
+						}
+						if r, found := routesMap[edge.RID]; found {
+							addRoute(r)
+						} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
+							addRoute(r)
+						}
+					}
+					for _, edge := range e.ReverseGraph[k] {
+						if edge.RID == "" {
+							continue
+						}
+						if r, found := routesMap[edge.RID]; found {
+							addRoute(r)
+						} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
+							addRoute(r)
+						}
+					}
+				}
+			}
+
+			slices.SortFunc(routes, func(a, b types.Route) int {
+				if a.RType != b.RType {
+					return cmp.Compare(a.RType, b.RType)
+				}
+				nameA := a.SName
+				if nameA == "" {
+					nameA = a.LName
+				}
+				nameB := b.SName
+				if nameB == "" {
+					nameB = b.LName
+				}
+				return strings.Compare(nameA, nameB)
+			})
+
 			cleanStop := stop
 			cleanStop.SID = utils.IdRemoveIDFMPrefix(stop.SID)
 			cleanStop.ParentStation = utils.IdRemoveIDFMPrefix(stop.ParentStation)
@@ -144,6 +251,7 @@ func init() {
 			c.JSON(http.StatusOK, gin.H{
 				"stop":       cleanStop,
 				"departures": departures,
+				"routes":     routes,
 			})
 		},
 	})
