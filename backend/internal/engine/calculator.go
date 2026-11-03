@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"maps/backend/internal/types"
 	"maps/backend/internal/utils"
@@ -21,10 +20,8 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 		return e.CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lonTo, latTo, config)
 	}
 
+	config.TargetTime = utils.InParis(config.TargetTime)
 	targetTime := config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
 
@@ -637,10 +634,8 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	queue := utils.NewPriorityQueue[queueNode]()
 	visited := make(map[stateKey]routeNode, 4096)
 
+	route.Config.TargetTime = utils.InParis(route.Config.TargetTime)
 	targetTime := route.Config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
 	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {
@@ -879,10 +874,8 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 }
 
 func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lonTo, latTo float64, config types.CalculatorConfig) (map[string][]types.Edge, error) {
+	config.TargetTime = utils.InParis(config.TargetTime)
 	targetTime := config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
 
@@ -1491,10 +1484,8 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 
 	routes := utils.IndexRoutesByID(e.Net.Routes)
 
+	route.Config.TargetTime = utils.InParis(route.Config.TargetTime)
 	targetTime := route.Config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
 	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {

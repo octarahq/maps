@@ -36,10 +36,8 @@ func (e *Engine) EdgesToParsedTrip(
 	firstStop := e.getStopFromIndex(edges[0].FromSID, stops)
 	lastStop := e.getStopFromIndex(edges[len(edges)-1].ToSID, stops)
 
-	targetTime := config.TargetTime
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime := utils.InParis(config.TargetTime)
+	config.TargetTime = targetTime
 
 	year, month, day := targetTime.Date()
 	baseDate := time.Date(year, month, day, 0, 0, 0, 0, targetTime.Location())

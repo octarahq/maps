@@ -10,9 +10,7 @@ import (
 )
 
 func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) []types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
@@ -105,9 +103,7 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 }
 
 func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map[string][]types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
