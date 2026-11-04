@@ -32,10 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
-import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
 import com.octara.maps.ui.screens.map.TransitMapScreen
-import com.octara.maps.ui.screens.search.SearchScreen
 import com.octara.maps.utils.LocationHelper
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
@@ -120,16 +118,14 @@ fun MapsApp() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            TransitMapScreen(
-                onSearchClick = { router.navigateTo(Screen.Search) }
-            )
+            TransitMapScreen()
 
             AnimatedVisibility(
-                visible = router.currentScreen is Screen.Search,
+                visible = router.currentScreen.isOverlay,
                 enter = fadeIn() + slideInVertically { it / 6 },
                 exit = fadeOut() + slideOutVertically { it / 6 }
             ) {
-                SearchScreen(
+                router.currentScreen.OverlayContent(
                     onBack = { router.goBack() }
                 )
             }

@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.octara.maps.navigation.LocalRouter
-import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
@@ -61,33 +60,28 @@ fun TransitMapSheetContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransitMapScreen(
-    modifier: Modifier = Modifier,
-    onSearchClick: (() -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
     val router = LocalRouter.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
 
-    val currentScreen = router.currentScreen
-    val isStopInfo = currentScreen is Screen.StopInfo
-    val isStopInfoState = rememberUpdatedState(isStopInfo)
+    val currentScreen = router.activeMapScreen
+    val isDismissibleState = rememberUpdatedState(currentScreen.isDismissible)
 
     var targetCoords by remember { mutableStateOf<LatLng?>(null) }
     var targetTitle by remember { mutableStateOf<String?>(null) }
 
-    val stopInfoPeekHeight = remember(configuration.screenHeightDp) {
-        (configuration.screenHeightDp.dp * 0.42f)
-            .coerceIn(AppDimensions.StopInfoSheetPeekHeight, 420.dp)
+    val sheetPeekHeight = remember(currentScreen, configuration.screenHeightDp) {
+        currentScreen.sheetPeekHeight(configuration.screenHeightDp.dp)
     }
-
-    val sheetPeekHeight = if (isStopInfo) stopInfoPeekHeight else AppDimensions.BottomSheetPeekHeight
     val sheetPeekHeightPx = with(density) { sheetPeekHeight.roundToPx() }
 
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.PartiallyExpanded,
         confirmValueChange = { newValue ->
             if (newValue == SheetValue.Hidden) {
-                isStopInfoState.value
+                isDismissibleState.value
             } else {
                 true
             }
@@ -106,21 +100,11 @@ fun TransitMapScreen(
     }
 
     LaunchedEffect(currentScreen) {
-        if (currentScreen is Screen.StopInfo) {
-            if (currentScreen.lat != null && currentScreen.lon != null) {
-                targetCoords = LatLng(currentScreen.lat, currentScreen.lon)
-                targetTitle = currentScreen.name
-            }
-            try {
-                sheetState.partialExpand()
-            } catch (_: Exception) {}
-        } else if (currentScreen is Screen.Map) {
-            targetCoords = null
-            targetTitle = null
-            try {
-                sheetState.partialExpand()
-            } catch (_: Exception) {}
-        }
+        targetCoords = currentScreen.mapTarget
+        targetTitle = currentScreen.mapTitle
+        try {
+            sheetState.partialExpand()
+        } catch (_: Exception) {}
     }
 
     BottomSheetScaffold(
@@ -129,27 +113,17 @@ fun TransitMapScreen(
         sheetPeekHeight = sheetPeekHeight,
         sheetShadowElevation = AppDimensions.BottomSheetElevation,
         sheetContent = {
-            when (val screen = router.currentScreen) {
-                is Screen.StopInfo -> {
-                    key(screen.stopId) {
-                        StopInfoSheetContent(
-                            stopId = screen.stopId,
-                            sheetState = sheetState,
-                            onClose = handleClose,
-                            onStopLoaded = { lat, lon, name ->
-                                if (targetCoords == null) {
-                                    targetCoords = LatLng(lat, lon)
-                                    targetTitle = name
-                                }
-                            }
-                        )
+            key(currentScreen) {
+                currentScreen.SheetContent(
+                    sheetState = sheetState,
+                    onClose = handleClose,
+                    onUpdateTarget = { coords, title ->
+                        if (targetCoords == null) {
+                            targetCoords = coords
+                            targetTitle = title
+                        }
                     }
-                }
-                else -> {
-                    TransitMapSheetContent(
-                        onSearchClick = onSearchClick ?: { router.navigateTo(Screen.Search) }
-                    )
-                }
+                )
             }
         },
         modifier = modifier.fillMaxSize()
@@ -158,14 +132,14 @@ fun TransitMapScreen(
             TransitMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraTarget = targetCoords,
-                cameraZoom = 15.5,
-                bottomPaddingPx = if (isStopInfo) sheetPeekHeightPx else with(density) { AppDimensions.BottomSheetPeekHeight.roundToPx() },
+                cameraZoom = currentScreen.cameraZoom,
+                bottomPaddingPx = sheetPeekHeightPx,
                 markerPosition = targetCoords,
                 markerTitle = targetTitle
             )
 
             AnimatedVisibility(
-                visible = isStopInfo,
+                visible = currentScreen.showBackButton,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
