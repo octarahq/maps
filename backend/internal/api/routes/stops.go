@@ -178,33 +178,24 @@ func init() {
 			}
 
 			for _, sidTarget := range targetStopIDs {
-				cleanTarget := utils.IdRemoveIDFMPrefix(sidTarget)
-				keys := []string{sidTarget, cleanTarget, "IDFM:" + cleanTarget, "stop_point:IDFM:" + cleanTarget, "stop_area:IDFM:" + cleanTarget}
-				seenKeys := make(map[string]bool)
-				for _, k := range keys {
-					if k == "" || seenKeys[k] {
+				for _, edge := range e.GetEdgesForStop(sidTarget) {
+					if edge.RID == "" {
 						continue
 					}
-					seenKeys[k] = true
-					for _, edge := range e.Graph[k] {
-						if edge.RID == "" {
-							continue
-						}
-						if r, found := routesMap[edge.RID]; found {
-							addRoute(r)
-						} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
-							addRoute(r)
-						}
+					if r, found := routesMap[edge.RID]; found {
+						addRoute(r)
+					} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
+						addRoute(r)
 					}
-					for _, edge := range e.ReverseGraph[k] {
-						if edge.RID == "" {
-							continue
-						}
-						if r, found := routesMap[edge.RID]; found {
-							addRoute(r)
-						} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
-							addRoute(r)
-						}
+				}
+				for _, edge := range e.GetReverseEdgesForStop(sidTarget) {
+					if edge.RID == "" {
+						continue
+					}
+					if r, found := routesMap[edge.RID]; found {
+						addRoute(r)
+					} else if r, found := routesMap[utils.IdRemoveIDFMPrefix(edge.RID)]; found {
+						addRoute(r)
 					}
 				}
 			}

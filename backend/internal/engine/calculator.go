@@ -603,7 +603,10 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	}
 
 	if len(e.Graph[fromSID]) == 0 {
-		if len(e.Graph["IDFM:"+cleanFromSID]) > 0 {
+		raw := e.ResolveStopSID(fromSID)
+		if len(e.Graph[raw]) > 0 {
+			fromSID = raw
+		} else if len(e.Graph["IDFM:"+cleanFromSID]) > 0 {
 			fromSID = "IDFM:" + cleanFromSID
 		} else if len(e.Graph[cleanFromSID]) > 0 {
 			fromSID = cleanFromSID
@@ -1451,7 +1454,10 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	}
 
 	if len(e.ReverseGraph[toSID]) == 0 {
-		if len(e.ReverseGraph["IDFM:"+cleanToSID]) > 0 {
+		raw := e.ResolveStopSID(toSID)
+		if len(e.ReverseGraph[raw]) > 0 {
+			toSID = raw
+		} else if len(e.ReverseGraph["IDFM:"+cleanToSID]) > 0 {
 			toSID = "IDFM:" + cleanToSID
 		} else if len(e.ReverseGraph[cleanToSID]) > 0 {
 			toSID = cleanToSID
