@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.octara.maps.ui.screens.map.StopInfoSheetContent
 import com.octara.maps.ui.screens.map.TransitMapSheetContent
 import com.octara.maps.ui.screens.search.SearchScreen
+import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
 
@@ -42,6 +43,15 @@ sealed interface Screen {
     data object Map : Screen {
         override val isDismissible: Boolean = false
         override val showBackButton: Boolean = false
+
+        override fun sheetPeekHeight(screenHeightDp: Dp): Dp {
+            val hasFavorites = FavoritesStopsManager.favoriteStops.value.isNotEmpty()
+            return if (hasFavorites) {
+                (screenHeightDp * 0.38f).coerceIn(280.dp, 340.dp)
+            } else {
+                AppDimensions.BottomSheetPeekHeight
+            }
+        }
 
         @Composable
         override fun SheetContent(

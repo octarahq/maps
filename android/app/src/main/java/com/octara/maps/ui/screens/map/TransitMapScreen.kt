@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,8 +62,8 @@ import com.octara.maps.navigation.Screen
 import com.octara.maps.types.Route
 import com.octara.maps.ui.components.RouteIcon
 
-private fun formatDepartureTime(dep: Int): String {
-    val wait = dep / 60.0f
+private fun formatDepartureTime(dep: Number): String {
+    val wait = dep.toFloat() / 60.0f
     return when {
         wait <= 1.0f -> "Imminent"
         wait < 60.0f -> "${wait.toInt()} min"
@@ -104,7 +107,9 @@ fun TransitMapSheetContent(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         AppSearchBar(
@@ -164,8 +169,13 @@ fun FavoritesStopsNextDepartures(
             ) {
                 RouteIcon(
                     route = Route(
+                        id = favoriteStop.routeId,
+                        short_name = favoriteStop.routeName,
+                        long_name = favoriteStop.routeName,
+                        color = favoriteStop.routeColor,
                         picto = favoriteStop.routepicto,
-                    ), modifier = Modifier.height(28.dp)
+                    ),
+                    modifier = Modifier.height(28.dp)
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -227,7 +237,7 @@ fun FavoritesStopsNextDepartures(
                         modifier = Modifier.weight(1f)
                     )
                     val waitText = formatDepartureTime(dep)
-                    val isImminent = dep / 60.0f <= 1.0f
+                    val isImminent = (dep.toFloat() / 60.0f) <= 1.0f
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
@@ -262,7 +272,9 @@ fun TransitMapScreen(
     var targetCoords by remember { mutableStateOf<LatLng?>(null) }
     var targetTitle by remember { mutableStateOf<String?>(null) }
 
-    val sheetPeekHeight = remember(currentScreen, configuration.screenHeightDp) {
+    val favoriteStops by FavoritesStopsManager.favoriteStops.collectAsState()
+
+    val sheetPeekHeight = remember(currentScreen, configuration.screenHeightDp, favoriteStops.isNotEmpty()) {
         currentScreen.sheetPeekHeight(configuration.screenHeightDp.dp)
     }
     val sheetPeekHeightPx = with(density) { sheetPeekHeight.roundToPx() }

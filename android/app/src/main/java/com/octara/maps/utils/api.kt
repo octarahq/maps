@@ -68,7 +68,8 @@ class Api {
             }
 
             val json = connection.inputStream.bufferedReader().use { it.readText() }
-            gson.fromJson(json, T::class.java)
+            val type = object : com.google.gson.reflect.TypeToken<T>() {}.type
+            gson.fromJson<T>(json, type)
                 ?: throw IllegalStateException("json is null")
         } finally {
             connection.disconnect()
@@ -109,12 +110,42 @@ class Api {
 
     suspend fun getNextDeparturesOfMultipleStops(list: List<Pair<String, String>>): Map<Pair<String, String>, Map<String, List<Int>>> =
         withContext(Dispatchers.IO) {
-            val url = "$BASE_URL/nextdepartures?stops=${list.joinToString(",") { "${it.first}:${it.second}" }}"
+            if (list.isEmpty()) return@withContext emptyMap()
+            try {
+                val url = "$BASE_URL/nextdepartures?stops=${list.joinToString(",") { "${it.first}:${it.second}" }}"
+                val response: Map<String, Map<String, List<Any>>> = fetchGET(url)
+                val result = mutableMapOf<Pair<String, String>, Map<String, List<Int>>>()
 
-            val response: Map<String, Map<String, List<Int>>> = fetchGET(url)
-            response.mapKeys { entry ->
-                val (stopId, routeId) = entry.key.split(":")
-                stopId to routeId
+                for ((key, deps) in response) {
+                    val clean = key.removePrefix("stop_point:IDFM:").removePrefix("IDFM:")
+                    val parts = clean.split(":")
+                    if (parts.size >= 2) {
+                        val stopId = parts[0]
+                        val routeId = parts[1]
+                        val sanitizedDeps = deps.mapValues { (_, times) ->
+                            times.mapNotNull { item ->
+                                when (item) {
+                                    is Number -> item.toInt()
+                                    is String -> item.toIntOrNull()
+                                    else -> null
+                                }
+                            }
+                        }
+                        result[stopId to routeId] = sanitizedDeps
+                        result["IDFM:$stopId" to "IDFM:$routeId"] = sanitizedDeps
+                    }
+                }
+
+                for (pair in list) {
+                    val cleanPair = pair.first.removePrefix("IDFM:") to pair.second.removePrefix("IDFM:")
+                    if (result.containsKey(cleanPair)) {
+                        result[pair] = result[cleanPair]!!
+                    }
+                }
+                result
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyMap()
             }
         }
 }

@@ -101,13 +101,11 @@ class FavoritesStopsManager(context: Context? = null) {
             val currentFavorites = favoriteStops.value.toMutableList()
 
             val exists = currentFavorites.any {
-                (it.stopId == stop.id && it.routeId == route.id) ||
-                        (it.stopName == stop.name && it.routeName == route.name)
+                (it.stopId == stop.id && it.routeId == route.id)
             }
             if (exists) {
                 currentFavorites.removeAll {
-                    (it.stopId == stop.id && it.routeId == route.id) ||
-                            (it.stopName == stop.name && it.routeName == route.name)
+                    (it.stopId == stop.id && it.routeId == route.id)
                 }
             } else {
                 currentFavorites.add(favoriteStop)
@@ -163,9 +161,7 @@ class FavoritesStopsManager(context: Context? = null) {
         }
 
         fun isFavorite(stop: Stop, route: Route): Boolean {
-            return isFavorite(stop.id, route.id) || favoriteStops.value.any {
-                it.stopName == stop.name && it.routeName == route.name
-            }
+            return isFavorite(stop.id, route.id)
         }
 
         fun getAllFavorites(): List<FavoriteStop> {
