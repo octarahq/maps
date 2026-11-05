@@ -54,17 +54,13 @@ func parseStopRoutePair(raw string) (stopRouteReq, bool) {
 }
 
 func getDirectEdges(e *engine.Engine, stopID, cleanSID string) []types.Edge {
-	if edges, ok := e.Graph[stopID]; ok && len(edges) > 0 {
+	if edges := e.GetEdgesForStop(stopID); len(edges) > 0 {
 		return edges
 	}
-	if edges, ok := e.Graph["IDFM:"+stopID]; ok && len(edges) > 0 {
-		return edges
-	}
-	if edges, ok := e.Graph["IDFM:"+cleanSID]; ok && len(edges) > 0 {
-		return edges
-	}
-	if edges, ok := e.Graph[cleanSID]; ok && len(edges) > 0 {
-		return edges
+	if cleanSID != "" && cleanSID != stopID {
+		if edges := e.GetEdgesForStop(cleanSID); len(edges) > 0 {
+			return edges
+		}
 	}
 	return nil
 }
@@ -72,32 +68,25 @@ func getDirectEdges(e *engine.Engine, stopID, cleanSID string) []types.Edge {
 func collectEdgesForStop(e *engine.Engine, stopID, cleanSID string) []types.Edge {
 	edges := getDirectEdges(e, stopID, cleanSID)
 
-	hasTransit := false
-	for _, edge := range edges {
-		if edge.RID != "" {
-			hasTransit = true
-			break
-		}
+	var children []string
+	if parent, ok := e.SearchParentsStopById(stopID); ok && len(parent.ChildrenStops) > 0 {
+		children = parent.ChildrenStops
+	} else if parent, ok := e.SearchParentsStopById(cleanSID); ok && len(parent.ChildrenStops) > 0 {
+		children = parent.ChildrenStops
+	} else if stop, ok := e.SearchStopById(stopID); ok && stop.ParentStation != "" {
+		cleanParent := utils.IdRemoveIDFMPrefix(stop.ParentStation)
+		return collectEdgesForStop(e, stop.ParentStation, cleanParent)
+	} else if stop, ok := e.SearchStopById(cleanSID); ok && stop.ParentStation != "" {
+		cleanParent := utils.IdRemoveIDFMPrefix(stop.ParentStation)
+		return collectEdgesForStop(e, stop.ParentStation, cleanParent)
 	}
 
-	if !hasTransit {
-		if parent, ok := e.SearchParentsStopById(stopID); ok && len(parent.ChildrenStops) > 0 {
-			for _, childSID := range parent.ChildrenStops {
-				cleanChild := utils.IdRemoveIDFMPrefix(childSID)
-				edges = append(edges, getDirectEdges(e, childSID, cleanChild)...)
-			}
-		} else if parent, ok := e.SearchParentsStopById(cleanSID); ok && len(parent.ChildrenStops) > 0 {
-			for _, childSID := range parent.ChildrenStops {
-				cleanChild := utils.IdRemoveIDFMPrefix(childSID)
-				edges = append(edges, getDirectEdges(e, childSID, cleanChild)...)
-			}
-		} else if stop, ok := e.SearchStopById(stopID); ok && stop.ParentStation != "" {
-			cleanParent := utils.IdRemoveIDFMPrefix(stop.ParentStation)
-			edges = collectEdgesForStop(e, stop.ParentStation, cleanParent)
-		} else if stop, ok := e.SearchStopById(cleanSID); ok && stop.ParentStation != "" {
-			cleanParent := utils.IdRemoveIDFMPrefix(stop.ParentStation)
-			edges = collectEdgesForStop(e, stop.ParentStation, cleanParent)
+	for _, childSID := range children {
+		if utils.IdRemoveIDFMPrefix(childSID) == cleanSID || childSID == stopID {
+			continue
 		}
+		cleanChild := utils.IdRemoveIDFMPrefix(childSID)
+		edges = append(edges, getDirectEdges(e, childSID, cleanChild)...)
 	}
 
 	return edges

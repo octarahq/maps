@@ -27,6 +27,7 @@ type Engine struct {
 	disruptionsMu    *sync.RWMutex
 	parentsByChild   map[string]string
 	childrenByParent map[string][]string
+	rawSIDByClean    map[string]string
 	shapesIndex      map[string][][2]float64
 	shapesByType     map[types.RouteType][]ShapeEntry
 }
@@ -37,11 +38,28 @@ func StartEngine() Engine {
 	e.disruptionsMu = &sync.RWMutex{}
 	e.parentsByChild = make(map[string]string)
 	e.childrenByParent = make(map[string][]string)
+	e.rawSIDByClean = make(map[string]string)
 	net, err := utils.LoadNetwork()
 	if err != nil {
 		log.Fatal(err)
 	}
 	e.Net = *net
+
+	for _, s := range e.Net.Stops {
+		clean := utils.IdRemoveIDFMPrefix(s.SID)
+		e.rawSIDByClean[clean] = s.SID
+		e.rawSIDByClean[s.SID] = s.SID
+		e.rawSIDByClean["IDFM:"+clean] = s.SID
+	}
+	for _, ps := range e.Net.ParentsStations {
+		clean := utils.IdRemoveIDFMPrefix(ps.PID)
+		if _, ok := e.rawSIDByClean[clean]; !ok {
+			e.rawSIDByClean[clean] = ps.PID
+		}
+		if _, ok := e.rawSIDByClean[ps.PID]; !ok {
+			e.rawSIDByClean[ps.PID] = ps.PID
+		}
+	}
 
 	if len(e.Net.ParentsStations) > 0 && e.Net.ParentsStations[0].Lat == 0 && e.Net.ParentsStations[0].Lon == 0 {
 		utils.EnrichParentsStations(&e.Net)
@@ -192,4 +210,66 @@ func (e *Engine) GetActiveServices(target time.Time) []bool {
 		return nil
 	}
 	return e.CalendarIndex.GetActiveServices(target)
+}
+
+func (e *Engine) ResolveStopSID(id string) string {
+	if raw, ok := e.rawSIDByClean[id]; ok {
+		return raw
+	}
+	clean := utils.IdRemoveIDFMPrefix(id)
+	if raw, ok := e.rawSIDByClean[clean]; ok {
+		return raw
+	}
+	if len(e.Graph[id]) > 0 {
+		return id
+	}
+	if len(e.Graph["IDFM:"+id]) > 0 {
+		return "IDFM:" + id
+	}
+	if len(e.Graph["IDFM:monomodalStopPlace:"+clean]) > 0 {
+		return "IDFM:monomodalStopPlace:" + clean
+	}
+	if len(e.Graph["IDFM:"+clean]) > 0 {
+		return "IDFM:" + clean
+	}
+	if len(e.Graph[clean]) > 0 {
+		return clean
+	}
+	return id
+}
+
+func (e *Engine) GetEdgesForStop(id string) []types.Edge {
+	raw := e.ResolveStopSID(id)
+	if edges, ok := e.Graph[raw]; ok && len(edges) > 0 {
+		return edges
+	}
+	if edges, ok := e.Graph[id]; ok && len(edges) > 0 {
+		return edges
+	}
+	clean := utils.IdRemoveIDFMPrefix(id)
+	if edges, ok := e.Graph["IDFM:"+clean]; ok && len(edges) > 0 {
+		return edges
+	}
+	if edges, ok := e.Graph[clean]; ok && len(edges) > 0 {
+		return edges
+	}
+	return nil
+}
+
+func (e *Engine) GetReverseEdgesForStop(id string) []types.Edge {
+	raw := e.ResolveStopSID(id)
+	if edges, ok := e.ReverseGraph[raw]; ok && len(edges) > 0 {
+		return edges
+	}
+	if edges, ok := e.ReverseGraph[id]; ok && len(edges) > 0 {
+		return edges
+	}
+	clean := utils.IdRemoveIDFMPrefix(id)
+	if edges, ok := e.ReverseGraph["IDFM:"+clean]; ok && len(edges) > 0 {
+		return edges
+	}
+	if edges, ok := e.ReverseGraph[clean]; ok && len(edges) > 0 {
+		return edges
+	}
+	return nil
 }
