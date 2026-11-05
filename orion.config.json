@@ -4,7 +4,8 @@
     "clean": true,
     "exclude": [
       "data",
-      "images"
+      "images",
+      "android"
     ]
   }
 }
