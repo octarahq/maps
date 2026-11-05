@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.navigation.rememberRouter
 import com.octara.maps.ui.screens.map.TransitMapScreen
 import com.octara.maps.utils.LocationHelper
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         MapLibre.getInstance(this)
+        FavoritesStopsManager.initialize(applicationContext)
 
         setContent {
             MaterialTheme {

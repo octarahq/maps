@@ -1,6 +1,7 @@
 package com.octara.maps.ui.screens.map
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +57,8 @@ import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.types.Departure
 import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
+import com.octara.maps.types.Stop
+import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.RouteTypeIcon
 import com.octara.maps.ui.theme.AppDimensions
@@ -130,8 +135,22 @@ data class NextRoutesDeparture(
 @Composable
 private fun RouteDepartureCard(
     routeInfo: NextRoutesDeparture,
+    stop: Stop? = null,
+    stopId: String = stop?.id ?: "",
+    favoritesManager: FavoritesStopsManager = FavoritesStopsManager(),
     modifier: Modifier = Modifier
 ) {
+    val currentStopId = stop?.id ?: stopId
+    var isFavorite by remember(currentStopId, routeInfo.routeId) {
+        mutableStateOf(
+            if (stop != null) {
+                favoritesManager.isFavorite(stop, routeInfo.toRoute())
+            } else {
+                favoritesManager.isFavorite(currentStopId, routeInfo.routeId)
+            }
+        )
+    }
+
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
@@ -174,6 +193,31 @@ private fun RouteDepartureCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarOutline,
+                    contentDescription = if (isFavorite) "Retirer des favoris" else "Mettre en favori",
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clickable {
+                            if (stop != null) {
+                                favoritesManager.toggleFavoriteStop(
+                                    stop = stop,
+                                    route = routeInfo.toRoute(),
+                                )
+                                isFavorite = favoritesManager.isFavorite(stop, routeInfo.toRoute())
+                            } else {
+                                favoritesManager.toggleFavoriteStop(
+                                    stopId = currentStopId,
+                                    routeId = routeInfo.routeId,
+                                    routeName = routeInfo.name,
+                                    routeColor = routeInfo.color,
+                                    routepicto = routeInfo.picto
+                                )
+                                isFavorite = favoritesManager.isFavorite(currentStopId, routeInfo.routeId)
+                            }
+                        },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (routeInfo.departures.isNotEmpty()) {
@@ -236,8 +280,9 @@ fun StopInfoSheetContent(
     onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null
 ) {
     val router = LocalRouter.current
+    val favoritesManager = com.octara.maps.managers.FavoritesStopsManager()
 
-     if (sheetState != null) {
+    if (sheetState != null) {
         LaunchedEffect(sheetState.currentValue) {
             if (sheetState.currentValue == SheetValue.Hidden) {
                 onClose?.invoke() ?: router.goBack()
@@ -339,149 +384,157 @@ fun StopInfoSheetContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-                val info = stopInfo
-                if (info == null && isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Chargement de l'arrêt...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else if (info == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Erreur lors du chargement de l'arrêt",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                } else {
-                    val routes = info.routes ?: emptyList()
-                    val allDepartures = info.departures ?: emptyList()
+        val info = stopInfo
+        if (info == null && isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Chargement de l'arrêt...",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else if (info == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Erreur lors du chargement de l'arrêt",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        } else {
+            val routes = info.routes ?: emptyList()
+            val allDepartures = info.departures ?: emptyList()
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp, bottom = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Place,
-                                contentDescription = "Arrêt",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = info.stop.name,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (routes.isNotEmpty()) {
-                                    "${routes.size} ligne${if (routes.size > 1) "s" else ""} • ${allDepartures.size} départ${if (allDepartures.size > 1) "s" else ""}"
-                                } else {
-                                    "Arrêt de transport"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.padding(bottom = 12.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Place,
+                        contentDescription = "Arrêt",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
                     )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = info.stop.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (routes.isNotEmpty()) {
+                            "${routes.size} ligne${if (routes.size > 1) "s" else ""} • ${allDepartures.size} départ${if (allDepartures.size > 1) "s" else ""}"
+                        } else {
+                            "Arrêt de transport"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Prochains départs",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Prochains départs",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (nextDeparturesLines.value.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Aucune ligne disponible",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                val (withDepartures, withoutDepartures) = nextDeparturesLines.value.partition { it.departures.isNotEmpty() }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    for (nextRoute in withDepartures) {
+                        RouteDepartureCard(
+                            stop = info.stop,
+                            routeInfo = nextRoute,
+                            favoritesManager = favoritesManager
                         )
                     }
 
-                    if (nextDeparturesLines.value.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    if (withoutDepartures.isNotEmpty()) {
+                        if (withDepartures.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
                             Text(
-                                text = "Aucune ligne disponible",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "Autres lignes (aucun départ immédiat)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 4.dp)
                             )
                         }
-                    } else {
-                        val (withDepartures, withoutDepartures) = nextDeparturesLines.value.partition { it.departures.isNotEmpty() }
 
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            for (nextRoute in withDepartures) {
-                                RouteDepartureCard(routeInfo = nextRoute)
-                            }
-
-                            if (withoutDepartures.isNotEmpty()) {
-                                if (withDepartures.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-                                    Text(
-                                        text = "Autres lignes (aucun départ immédiat)",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-                                }
-
-                                for (nextRoute in withoutDepartures) {
-                                    RouteDepartureCard(routeInfo = nextRoute)
-                                }
-                            }
+                        for (nextRoute in withoutDepartures) {
+                            RouteDepartureCard(
+                                stop = info.stop,
+                                routeInfo = nextRoute,
+                                favoritesManager = favoritesManager
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
 

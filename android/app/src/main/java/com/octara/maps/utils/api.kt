@@ -106,4 +106,15 @@ class Api {
         val response: StopInfoResponse = fetchGET(url)
         response
     }
+
+    suspend fun getNextDeparturesOfMultipleStops(list: List<Pair<String, String>>): Map<Pair<String, String>, Map<String, List<Int>>> =
+        withContext(Dispatchers.IO) {
+            val url = "$BASE_URL/nextdepartures?stops=${list.joinToString(",") { "${it.first}:${it.second}" }}"
+
+            val response: Map<String, Map<String, List<Int>>> = fetchGET(url)
+            response.mapKeys { entry ->
+                val (stopId, routeId) = entry.key.split(":")
+                stopId to routeId
+            }
+        }
 }

@@ -4,56 +4,246 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
+import com.octara.maps.managers.FavoritesStopsManager
+import com.octara.maps.managers.FavoriteStop
+import com.octara.maps.navigation.Screen
+import com.octara.maps.types.Route
+import com.octara.maps.ui.components.RouteIcon
+
+private fun formatDepartureTime(dep: Int): String {
+    val wait = dep / 60.0f
+    return when {
+        wait <= 1.0f -> "Imminent"
+        wait < 60.0f -> "${wait.toInt()} min"
+        else -> {
+            val hours = (wait / 60).toInt()
+            val mins = (wait % 60).toInt()
+            if (mins == 0) "${hours} h" else "${hours} h ${mins} min"
+        }
+    }
+}
 
 @Composable
 fun TransitMapSheetContent(
     onSearchClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val router = LocalRouter.current
+
+    val favoritesManager = remember { FavoritesStopsManager() }
+    val favoriteStops by favoritesManager.favoriteStops.collectAsState()
+    var favoritesStopsNextDepartures by remember {
+        mutableStateOf<Map<Pair<String, String>, Map<String, List<Int>>>>(emptyMap())
+    }
+
+    LaunchedEffect(favoriteStops) {
+        while (true) {
+            if (favoriteStops.isNotEmpty()) {
+                try {
+                    val pairs = favoriteStops.map { it.stopId to it.routeId }
+                    favoritesStopsNextDepartures = com.octara.maps.utils.Api().getNextDeparturesOfMultipleStops(pairs)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            } else {
+                favoritesStopsNextDepartures = emptyMap()
+            }
+            delay(60_000L)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         AppSearchBar(
             active = false,
             onClick = onSearchClick
         )
+
+        for (favorite in favoriteStops) {
+            val nextDeps = favoritesStopsNextDepartures[favorite.stopId to favorite.routeId]
+                ?: favoritesStopsNextDepartures[favorite.stopId.removePrefix("IDFM:") to favorite.routeId.removePrefix("IDFM:")]
+                ?: emptyMap()
+            FavoritesStopsNextDepartures(
+                modifier = Modifier.fillMaxWidth(),
+                favoriteStop = favorite,
+                nextDepartures = nextDeps,
+                onClick = {
+                    router.navigateTo(
+                        Screen.StopInfo(
+                            stopId = favorite.stopId,
+                            lat = null,
+                            lon = null,
+                            name = favorite.stopName
+                        ),
+                        popCurrent = true
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun FavoritesStopsNextDepartures(
+    modifier: Modifier = Modifier,
+    favoriteStop: FavoriteStop,
+    nextDepartures: Map<String, List<Int>>,
+    onClick: () -> Unit = {}
+) {
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RouteIcon(
+                    route = Route(
+                        picto = favoriteStop.routepicto,
+                    ), modifier = Modifier.height(28.dp)
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = favoriteStop.stopName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (favoriteStop.routeColor.isNotEmpty()) {
+                            try {
+                                val clean = favoriteStop.routeColor.trim().removePrefix("#")
+                                Color((0xFF000000L or clean.toLong(16)).toInt())
+                            } catch (_: Exception) {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                modifier = Modifier.padding(vertical = 2.dp)
+            )
+
+            if (nextDepartures.isEmpty()) {
+                Text(
+                    text = "Aucun départ prévu",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            for ((headsign, departures) in nextDepartures) {
+                val dep = departures.firstOrNull() ?: continue
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (headsign.isNotEmpty()) headsign else "Direction inconnue",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    val waitText = formatDepartureTime(dep)
+                    val isImminent = dep / 60.0f <= 1.0f
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        Text(
+                            text = waitText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isImminent) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (isImminent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -104,7 +294,8 @@ fun TransitMapScreen(
         targetTitle = currentScreen.mapTitle
         try {
             sheetState.partialExpand()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 
     BottomSheetScaffold(
