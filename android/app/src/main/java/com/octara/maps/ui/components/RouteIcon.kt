@@ -35,8 +35,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
 import com.octara.maps.types.Departure
@@ -214,7 +217,15 @@ fun RouteIcon(
     val picto = route.picto ?: ""
     if (picto.isNotBlank()) {
         val pictoUrl = getRoutePictoResourceUrl(picto)
-        val painter = rememberAsyncImagePainter(model = pictoUrl)
+        val painter = rememberAsyncImagePainter(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(pictoUrl)
+                .memoryCacheKey(pictoUrl)
+                .diskCacheKey(pictoUrl)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .build()
+        )
         val state = painter.state
 
         if (state is AsyncImagePainter.State.Error) {
