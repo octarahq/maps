@@ -8,7 +8,15 @@ The best navigation maps for the IDFM network. (for now only the transit engine 
 - [x] Api
 - [x] Small website to use the journey planner engine
 - [ ] Implementation of OpenStreetMap data (indoor and outdoor planning)
-- [ ] Android app for maximum usability and style x)
+- [~] Android app for maximum usability and style x)
+    - [x] Map
+    - [x] Stop search
+    - [x] Next departures
+    - [x] Stop Info
+    - [x] Journey planner
+    - [ ] Journey navigation
+    - [ ] Fix bugs
+    - [x] Be perfect (always)
 
 ## Use
 
