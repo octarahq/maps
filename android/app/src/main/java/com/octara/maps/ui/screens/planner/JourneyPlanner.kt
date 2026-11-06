@@ -953,7 +953,7 @@ fun TransitLegItem(leg: TripLeg) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(IntrinsicSize.Min)
+                                .height(28.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -987,20 +987,6 @@ fun TransitLegItem(leg: TripLeg) {
                                     )
                                 }
                             }
-
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.Black,
-                                modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp)
-                            ) {
-                                Text(
-                                    text = "Situation anormale",
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
                         }
                     }
 
@@ -1011,25 +997,23 @@ fun TransitLegItem(leg: TripLeg) {
                     ) {
                         Canvas(
                             modifier = Modifier
-                                .width(if (hasBlocked) 44.dp else 16.dp)
+                                .width(if (isBlocked) 44.dp else 16.dp)
                                 .fillMaxHeight()
                         ) {
                             val barW = 16.dp.toPx()
-                            if (hasBlocked) {
+                            if (isBlocked) {
                                 drawRect(
                                     color = tColor.copy(alpha = 0.25f),
                                     topLeft = Offset(0f, 0f),
                                     size = androidx.compose.ui.geometry.Size(barW, size.height)
                                 )
 
-                                if (isBlocked) {
-                                    val detourX = 36.dp.toPx()
-                                    drawRect(
-                                        color = tColor,
-                                        topLeft = Offset(detourX - (barW / 2f), 0f),
-                                        size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                    )
-                                }
+                                val detourX = 36.dp.toPx()
+                                drawRect(
+                                    color = tColor,
+                                    topLeft = Offset(detourX - (barW / 2f), 0f),
+                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
+                                )
                             } else {
                                 drawRect(
                                     color = tColor,
@@ -1048,55 +1032,45 @@ fun TransitLegItem(leg: TripLeg) {
                     ) {
                         Canvas(
                             modifier = Modifier
-                                .width(if (hasBlocked) 44.dp else 16.dp)
+                                .width(if (isBlocked) 44.dp else 16.dp)
                                 .fillMaxHeight()
                         ) {
                             val barW = 16.dp.toPx()
                             val centerY = size.height / 2f
 
-                            if (hasBlocked) {
+                            if (isBlocked) {
                                 drawRect(
                                     color = tColor.copy(alpha = 0.25f),
                                     topLeft = Offset(0f, 0f),
                                     size = androidx.compose.ui.geometry.Size(barW, size.height)
                                 )
 
-                                if (isBlocked) {
-                                    val detourX = 36.dp.toPx()
-                                    drawRect(
-                                        color = tColor,
-                                        topLeft = Offset(detourX - (barW / 2f), 0f),
-                                        size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                    )
+                                val detourX = 36.dp.toPx()
+                                drawRect(
+                                    color = tColor,
+                                    topLeft = Offset(detourX - (barW / 2f), 0f),
+                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
+                                )
 
-                                    val crossCenter = Offset(barW / 2f, centerY)
-                                    val crossRadius = 6.dp.toPx()
-                                    val crossColor = Color(0xFFE53935)
-                                    val crossStroke = 2.5.dp.toPx()
+                                val crossCenter = Offset(barW / 2f, centerY)
+                                val crossRadius = 7.dp.toPx()
+                                val crossColor = Color(0xFFE53935)
+                                val crossStroke = 3.5.dp.toPx()
 
-                                    drawLine(
-                                        color = crossColor,
-                                        start = Offset(crossCenter.x - crossRadius, crossCenter.y - crossRadius),
-                                        end = Offset(crossCenter.x + crossRadius, crossCenter.y + crossRadius),
-                                        strokeWidth = crossStroke,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                    drawLine(
-                                        color = crossColor,
-                                        start = Offset(crossCenter.x + crossRadius, crossCenter.y - crossRadius),
-                                        end = Offset(crossCenter.x - crossRadius, crossCenter.y + crossRadius),
-                                        strokeWidth = crossStroke,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                } else {
-                                    val radius = barW / 2f
-                                    val holeRadius = radius * 0.52f
-                                    drawCircle(
-                                        color = Color.White,
-                                        radius = holeRadius,
-                                        center = Offset(radius, centerY)
-                                    )
-                                }
+                                drawLine(
+                                    color = crossColor,
+                                    start = Offset(crossCenter.x - crossRadius, crossCenter.y - crossRadius),
+                                    end = Offset(crossCenter.x + crossRadius, crossCenter.y + crossRadius),
+                                    strokeWidth = crossStroke,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                                drawLine(
+                                    color = crossColor,
+                                    start = Offset(crossCenter.x + crossRadius, crossCenter.y - crossRadius),
+                                    end = Offset(crossCenter.x - crossRadius, crossCenter.y + crossRadius),
+                                    strokeWidth = crossStroke,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
                             } else {
                                 drawRect(
                                     color = tColor,
@@ -1113,7 +1087,7 @@ fun TransitLegItem(leg: TripLeg) {
                             }
                         }
 
-                        val stopTextColor = if (isBlocked) tColor.copy(alpha = 0.35f) else tColor
+                        val stopTextColor = if (isBlocked) tColor.copy(alpha = 0.65f) else tColor
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1124,7 +1098,7 @@ fun TransitLegItem(leg: TripLeg) {
                             Text(
                                 text = stop.name,
                                 fontSize = 16.sp,
-                                fontWeight = if (isBlocked) FontWeight.Normal else FontWeight.Medium,
+                                fontWeight = if (isBlocked) FontWeight.SemiBold else FontWeight.Medium,
                                 color = stopTextColor,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
@@ -1147,7 +1121,7 @@ fun TransitLegItem(leg: TripLeg) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(22.dp)
+                                .height(28.dp)
                         ) {
                             Canvas(
                                 modifier = Modifier
