@@ -252,7 +252,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 				Name:          intermediateStop.Name,
 				ArrivalTime:   baseDate.Add(time.Duration(arrTime) * time.Second),
 				DepartureTime: baseDate.Add(time.Duration(arrTime) * time.Second),
-				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID),
+				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
 				Lat:           intermediateStop.Lat,
 				Lon:           intermediateStop.Long,
 			})
@@ -609,7 +609,7 @@ func (e *Engine) edgesToParsedTripArrival(
 				Name:          intermediateStop.Name,
 				ArrivalTime:   baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
 				DepartureTime: baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
-				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID),
+				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
 				Lat:           intermediateStop.Lat,
 				Lon:           intermediateStop.Long,
 			})
