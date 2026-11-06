@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,14 @@ import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Train
+import androidx.compose.material.icons.filled.Tram
+import androidx.compose.material.icons.filled.DirectionsBoat
+import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +67,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.octara.maps.ui.theme.AppDimensions
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -91,6 +105,7 @@ import com.octara.maps.types.Position
 import com.octara.maps.types.TimeType
 import com.octara.maps.types.Route
 import com.octara.maps.types.Accessibility
+import com.octara.maps.types.RouteType
 import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
@@ -112,8 +127,39 @@ fun JourneyPlannerSheetContent(
     val router = LocalRouter.current
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("journey_planner_prefs", Context.MODE_PRIVATE) }
 
+    val allRouteModes = remember {
+        listOf(
+            RouteType.METRO,
+            RouteType.TRAIN,
+            RouteType.TRAM,
+            RouteType.BUS,
+            RouteType.FERRY,
+            RouteType.CABLE_TRAM
+        )
+    }
+
+    val initialSavedModes = remember {
+        val saved = prefs.getStringSet("preferred_allowed_modes", null)
+        if (saved == null) {
+            allRouteModes.toSet()
+        } else {
+            saved.mapNotNull { name ->
+                try {
+                    RouteType.valueOf(name)
+                } catch (_: Exception) {
+                    null
+                }
+            }.toSet().ifEmpty { allRouteModes.toSet() }
+        }
+    }
+
+    var selectedAllowedModes by remember { mutableStateOf(initialSavedModes) }
     var currentCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+
+    val initialWheelchair = remember { prefs.getBoolean("preferred_wheelchair", false) }
+    val initialWithBike = remember { prefs.getBoolean("preferred_with_bike", false) }
 
     var journeyConfig by remember {
         mutableStateOf(
@@ -122,9 +168,9 @@ fun JourneyPlannerSheetContent(
                 to = Position.ByStop(toStopId),
                 time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
                 timeType = TimeType.DEPARTURE,
-                allowedModes = null,
-                withBike = false,
-                wheelchair = false,
+                allowedModes = if (selectedAllowedModes.size == allRouteModes.size) null else selectedAllowedModes.toList(),
+                withBike = initialWithBike,
+                wheelchair = initialWheelchair,
                 currentGps = null
             )
         )
@@ -163,6 +209,7 @@ fun JourneyPlannerSheetContent(
 
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isMenuExpanded by remember { mutableStateOf(false) }
+    var showSettingsModal by remember { mutableStateOf(false) }
 
     fun formatDisplayDateTime(cal: Calendar): String {
         val now = Calendar.getInstance()
@@ -354,31 +401,33 @@ fun JourneyPlannerSheetContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(IntrinsicSize.Min)
                 .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
                 modifier = Modifier
-                    .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { isMenuExpanded = true },
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFFE8E8ED)
             ) {
                 Box(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = if (journeyConfig.timeType == TimeType.DEPARTURE) "Départ à" else "Arrivée à",
                             color = Color(0xFF555555),
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
@@ -413,6 +462,7 @@ fun JourneyPlannerSheetContent(
             Surface(
                 modifier = Modifier
                     .weight(1f)
+                    .fillMaxHeight()
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { openDateTimePicker() },
                 shape = RoundedCornerShape(12.dp),
@@ -420,7 +470,7 @@ fun JourneyPlannerSheetContent(
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -439,9 +489,219 @@ fun JourneyPlannerSheetContent(
                     )
                 }
             }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { showSettingsModal = true },
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFE8E8ED)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = Color(0xFF555555),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
 
-        val prefs = remember { context.getSharedPreferences("journey_planner_prefs", Context.MODE_PRIVATE) }
+        if (showSettingsModal) {
+            Dialog(
+                onDismissRequest = { showSettingsModal = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .clip(RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    shadowElevation = 8.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                    ) {
+                        Text(
+                            text = "Paramètres divers",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E1E1E)
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Accessibilité fauteuil roulant",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF1E1E1E)
+                            )
+                            androidx.compose.material3.Switch(
+                                checked = journeyConfig.wheelchair,
+                                onCheckedChange = { isChecked ->
+                                    journeyConfig = journeyConfig.copy(wheelchair = isChecked)
+                                    prefs.edit().putBoolean("preferred_wheelchair", isChecked).apply()
+                                },
+                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF007AFF),
+                                    uncheckedThumbColor = Color(0xFFBDBDBD),
+                                    checkedTrackColor = Color(0xFFB3D7FF),
+                                    uncheckedTrackColor = Color(0xFFE0E0E0)
+                                )
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Départ avec vélo",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF1E1E1E)
+                            )
+                            androidx.compose.material3.Switch(
+                                checked = journeyConfig.withBike,
+                                onCheckedChange = { isChecked ->
+                                    journeyConfig = journeyConfig.copy(withBike = isChecked)
+                                    prefs.edit().putBoolean("preferred_with_bike", isChecked).apply()
+                                },
+                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF007AFF),
+                                    uncheckedThumbColor = Color(0xFFBDBDBD),
+                                    checkedTrackColor = Color(0xFFB3D7FF),
+                                    uncheckedTrackColor = Color(0xFFE0E0E0)
+                                )
+                            )
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 18.dp),
+                            color = Color(0xFFEBEBEB)
+                        )
+
+                        Text(
+                            text = "Modes de transport autorisés",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E1E1E),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        val modeMeta = remember {
+                            listOf(
+                                RouteType.METRO to ("Métro" to Icons.Filled.Subway),
+                                RouteType.TRAIN to ("Train" to Icons.Filled.Train),
+                                RouteType.TRAM to ("Tramway" to Icons.Filled.Tram),
+                                RouteType.BUS to ("Bus" to Icons.Filled.DirectionsBus),
+                                RouteType.FERRY to ("Ferry" to Icons.Filled.DirectionsBoat),
+                                RouteType.CABLE_TRAM to ("Téléphérique" to Icons.Filled.Cable)
+                            )
+                        }
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (rowModes in modeMeta.chunked(2)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for ((mode, info) in rowModes) {
+                                        val isSelected = selectedAllowedModes.contains(mode)
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    val newSet = if (isSelected) {
+                                                        if (selectedAllowedModes.size > 1) selectedAllowedModes - mode else selectedAllowedModes
+                                                    } else {
+                                                        selectedAllowedModes + mode
+                                                    }
+                                                    selectedAllowedModes = newSet
+                                                    prefs.edit()
+                                                        .putStringSet(
+                                                            "preferred_allowed_modes",
+                                                            newSet.map { it.name }.toSet()
+                                                        )
+                                                        .apply()
+                                                    journeyConfig = journeyConfig.copy(
+                                                        allowedModes = if (newSet.size == allRouteModes.size) null else newSet.toList()
+                                                    )
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) Color(0xFFEBF3FF) else Color(0xFFF3F3F5),
+                                            border = if (isSelected) androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                Color(0xFF007AFF)
+                                            ) else null
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = info.second,
+                                                        contentDescription = null,
+                                                        tint = if (isSelected) Color(0xFF007AFF) else Color(0xFF666666),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Text(
+                                                        text = info.first,
+                                                        fontSize = 14.sp,
+                                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                                        color = if (isSelected) Color(0xFF007AFF) else Color(0xFF444444),
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Sélectionné",
+                                                        tint = Color(0xFF007AFF),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         var selectedMode by remember {
             mutableStateOf(prefs.getString("preferred_route_mode", "comfort") ?: "comfort")
         }

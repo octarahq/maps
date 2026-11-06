@@ -152,9 +152,9 @@ func init() {
 			var weelchair types.Accessibility = types.AccessibilityUnknown
 			if value := strings.ToLower(strings.TrimSpace(c.Query("wheelchair"))); value != "" {
 				switch value {
-				case "obligatory", "yes", "true", "1":
+				case "true":
 					weelchair = types.AccessibilityYes
-				case "no", "false", "0":
+				case "false":
 					weelchair = types.AccessibilityUnknown
 				}
 			}
