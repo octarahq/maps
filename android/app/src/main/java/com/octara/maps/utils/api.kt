@@ -6,12 +6,19 @@ import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
-import com.octara.maps.types.ParentStop
-import com.octara.maps.types.Stop
-import com.octara.maps.types.Route
+import com.octara.maps.types.Accessibility
 import com.octara.maps.types.Departure
-import com.octara.maps.types.StopType
+import com.octara.maps.types.JourneyQuery
+import com.octara.maps.types.JourneyResponse
+import com.octara.maps.types.LegType
+import com.octara.maps.types.ParentStop
+import com.octara.maps.types.Position
+import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
+import com.octara.maps.types.Stop
+import com.octara.maps.types.StopType
+import com.octara.maps.types.TimeType
+import com.octara.maps.types.TrainPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -52,9 +59,52 @@ class Api {
                 return RouteType.fromValue(intVal)
             }
         })
+        .registerTypeAdapter(LegType::class.java, object : TypeAdapter<LegType>() {
+            override fun write(out: JsonWriter, value: LegType?) {
+                out.value(value?.value ?: 0)
+            }
+
+            override fun read(reader: JsonReader): LegType {
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull()
+                    return LegType.WALK
+                }
+                val intVal = reader.nextInt()
+                return LegType.fromValue(intVal)
+            }
+        })
+        .registerTypeAdapter(Accessibility::class.java, object : TypeAdapter<Accessibility>() {
+            override fun write(out: JsonWriter, value: Accessibility?) {
+                out.value(value?.value ?: 0)
+            }
+
+            override fun read(reader: JsonReader): Accessibility {
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull()
+                    return Accessibility.UNKNOWN
+                }
+                val intVal = reader.nextInt()
+                return Accessibility.fromValue(intVal)
+            }
+        })
+        .registerTypeAdapter(TrainPosition::class.java, object : TypeAdapter<TrainPosition>() {
+            override fun write(out: JsonWriter, value: TrainPosition?) {
+                out.value(value?.value ?: 0)
+            }
+
+            override fun read(reader: JsonReader): TrainPosition {
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull()
+                    return TrainPosition.UNKNOWN
+                }
+                val intVal = reader.nextInt()
+                return TrainPosition.fromValue(intVal)
+            }
+        })
         .create()
 
     inline fun <reified T> fetchGET(url: String): T {
+        android.util.Log.d("OctaraApi", "Fetching GET: $url")
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
@@ -63,14 +113,22 @@ class Api {
 
         return try {
             val responseCode = connection.responseCode
+            android.util.Log.d("OctaraApi", "Response code $responseCode for $url")
             if (responseCode !in 200..299) {
-                throw IllegalStateException("GET $url failed ($responseCode)")
+                val errText = try { connection.errorStream?.bufferedReader()?.use { it.readText() } } catch (_: Exception) { null }
+                android.util.Log.e("OctaraApi", "GET failed ($responseCode): $errText")
+                throw IllegalStateException("GET $url failed ($responseCode): $errText")
             }
 
             val json = connection.inputStream.bufferedReader().use { it.readText() }
             val type = object : com.google.gson.reflect.TypeToken<T>() {}.type
-            gson.fromJson<T>(json, type)
+            val result = gson.fromJson<T>(json, type)
                 ?: throw IllegalStateException("json is null")
+            android.util.Log.d("OctaraApi", "Parsed successfully: ${result?.javaClass?.simpleName}")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("OctaraApi", "Exception during GET $url", e)
+            throw e
         } finally {
             connection.disconnect()
         }
@@ -148,4 +206,105 @@ class Api {
                 emptyMap()
             }
         }
+
+    suspend fun getJourney(query: JourneyQuery): JourneyResponse = withContext(Dispatchers.IO) {
+        val params = mutableListOf<Pair<String, String>>()
+
+        when (val from = query.from) {
+            is Position.Coordinates -> {
+                params.add("from_lat" to from.lat.toString())
+                params.add("from_lon" to from.lon.toString())
+            }
+
+            is Position.ByStop -> {
+                params.add("from_stop" to from.stopId)
+            }
+
+            is Position.CurrentLocation -> {
+                query.currentGps?.let {
+                    params.add("from_lat" to it.first.toString())
+                    params.add("from_lon" to it.second.toString())
+                } ?: throw IllegalArgumentException("invalid 'from' position: CurrentLocation but currentGps is null")
+            }
+        }
+
+        when (val to = query.to) {
+            is Position.Coordinates -> {
+                params.add("to_lat" to to.lat.toString())
+                params.add("to_lon" to to.lon.toString())
+            }
+
+            is Position.ByStop -> {
+                params.add("to_stop" to to.stopId)
+            }
+
+            is Position.CurrentLocation -> {
+                query.currentGps?.let {
+                    params.add("to_lat" to it.first.toString())
+                    params.add("to_lon" to it.second.toString())
+                } ?: throw IllegalArgumentException("invalid 'to' position: CurrentLocation but currentGps is null")
+            }
+        }
+
+        if (!query.time.isNullOrBlank()) {
+            params.add("time" to query.time)
+            params.add("timetype" to if (query.timeType == TimeType.ARRIVAL) "arrival" else "departure")
+        }
+
+        if (!query.allowedModes.isNullOrEmpty()) {
+            val modesStr = query.allowedModes.mapNotNull { mode ->
+                when (mode) {
+                    RouteType.TRAM -> "tram"
+                    RouteType.METRO -> "metro"
+                    RouteType.TRAIN -> "train"
+                    RouteType.BUS -> "bus"
+                    RouteType.FERRY -> "ferry"
+                    RouteType.CABLE_TRAM -> "cabletram"
+                    RouteType.AERIAL_LIFT -> "aeriallift"
+                    RouteType.FUNICULAR -> "funicular"
+                }
+            }.joinToString(",")
+            if (modesStr.isNotBlank()) {
+                params.add("allowedmodes" to modesStr)
+            }
+        }
+
+        if (query.withBike) {
+            params.add("withbike" to "true")
+        }
+        if (query.wheelchair) {
+            params.add("wheelchair" to "true")
+        }
+
+        val queryString = params.joinToString("&") { (key, value) ->
+            "$key=${URLEncoder.encode(value, "UTF-8")}"
+        }
+
+        val url = "$BASE_URL/transit/journey?$queryString"
+        fetchGET<JourneyResponse>(url)
+    }
+
+    suspend fun getJourney(
+        from: Position,
+        to: Position,
+        time: String? = null,
+        timeType: TimeType = TimeType.DEPARTURE,
+        allowedModes: List<RouteType>? = null,
+        withBike: Boolean = false,
+        wheelchair: Boolean = false,
+        currentGps: Pair<Double, Double>? = null
+    ): JourneyResponse = getJourney(
+        JourneyQuery(
+            from = from,
+            to = to,
+            time = time,
+            timeType = timeType,
+            allowedModes = allowedModes,
+            withBike = withBike,
+            wheelchair = wheelchair,
+            currentGps = currentGps
+        )
+    )
 }
+
+val api = Api()

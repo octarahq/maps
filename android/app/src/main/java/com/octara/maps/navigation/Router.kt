@@ -2,6 +2,7 @@ package com.octara.maps.navigation
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
@@ -13,6 +14,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.octara.maps.ui.screens.map.StopInfoSheetContent
 import com.octara.maps.ui.screens.map.TransitMapSheetContent
+import com.octara.maps.ui.screens.planner.JourneyPlannerSheetContent
 import com.octara.maps.ui.screens.search.SearchScreen
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.theme.AppDimensions
@@ -28,6 +30,8 @@ sealed interface Screen {
     val mapTitle: String? get() = null
     val cameraZoom: Double get() = 15.5
 
+    val initialSheetValue: SheetValue get() = SheetValue.PartiallyExpanded
+
     fun sheetPeekHeight(screenHeightDp: Dp): Dp = AppDimensions.BottomSheetPeekHeight
 
     @Composable
@@ -35,10 +39,12 @@ sealed interface Screen {
         sheetState: SheetState,
         onClose: () -> Unit,
         onUpdateTarget: (LatLng, String?) -> Unit
-    ) {}
+    ) {
+    }
 
     @Composable
-    fun OverlayContent(onBack: () -> Unit) {}
+    fun OverlayContent(onBack: () -> Unit) {
+    }
 
     data object Map : Screen {
         override val isDismissible: Boolean = false
@@ -111,6 +117,36 @@ sealed interface Screen {
             )
         }
     }
+
+    data class JourneyPlanner(
+        val toStopId: String,
+        val toStopName: String,
+    ) : Screen {
+        override val isDismissible: Boolean = true
+        override val showBackButton: Boolean = true
+
+
+        override val initialSheetValue: SheetValue
+            get() = SheetValue.Expanded
+
+        override fun sheetPeekHeight(screenHeightDp: Dp): Dp {
+            return 50.dp
+        }
+
+        @Composable
+        override fun SheetContent(
+            sheetState: SheetState,
+            onClose: () -> Unit,
+            onUpdateTarget: (LatLng, String?) -> Unit
+        ) {
+            JourneyPlannerSheetContent(
+                toStopId = toStopId,
+                toStopName = toStopName,
+                sheetState = sheetState,
+                onClose = onClose
+            )
+        }
+    }
 }
 
 class Router(initialScreen: Screen = Screen.Map) {
@@ -121,6 +157,8 @@ class Router(initialScreen: Screen = Screen.Map) {
         if (!initialScreen.isOverlay) initialScreen else Screen.Map
     )
         private set
+
+    var activeJourney by mutableStateOf<com.octara.maps.types.ParsedTrip?>(null)
 
     private val backStack = mutableListOf(initialScreen)
 
@@ -136,6 +174,9 @@ class Router(initialScreen: Screen = Screen.Map) {
             currentScreen = screen
             if (!screen.isOverlay) {
                 activeMapScreen = screen
+                if (screen !is Screen.JourneyPlanner) {
+                    activeJourney = null
+                }
             }
         }
     }
@@ -145,6 +186,9 @@ class Router(initialScreen: Screen = Screen.Map) {
             backStack.removeAt(backStack.size - 1)
             currentScreen = backStack.last()
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
+            if (activeMapScreen !is Screen.JourneyPlanner) {
+                activeJourney = null
+            }
             return true
         }
         return false
@@ -157,6 +201,7 @@ class Router(initialScreen: Screen = Screen.Map) {
             backStack.add(root)
             currentScreen = root
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
+            activeJourney = null
         }
     }
 }

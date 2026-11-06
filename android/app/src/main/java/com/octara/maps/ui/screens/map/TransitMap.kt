@@ -28,6 +28,20 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 
+import android.graphics.Color as AndroidColor
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
+import com.octara.maps.types.LegType
+import com.octara.maps.types.ParsedTrip
+import org.maplibre.android.style.expressions.Expression.*
+
 private const val OSM_STYLE_JSON = """
 {
   "version": 8,
@@ -105,6 +119,7 @@ fun TransitMap(
     bottomPaddingPx: Int = 0,
     markerPosition: LatLng? = null,
     markerTitle: String? = null,
+    activeJourney: ParsedTrip? = null,
     animationDurationMs: Int = 1200,
     onMapReady: ((MapLibreMap) -> Unit)? = null
 ) {
@@ -115,6 +130,8 @@ fun TransitMap(
     var isMapReady by remember { mutableStateOf(false) }
     var currentMarker by remember { mutableStateOf<Marker?>(null) }
     var lastAnimatedTarget by remember { mutableStateOf<LatLng?>(null) }
+    var addedLayerIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var addedSourceIds by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val mapView = remember {
         MapView(context).apply {
@@ -179,6 +196,127 @@ fun TransitMap(
                     markerOptions.icon(icon)
                 }
                 currentMarker = map.addMarker(markerOptions)
+            }
+        }
+    }
+
+    LaunchedEffect(activeJourney, mapInstance, isMapReady) {
+        val map = mapInstance
+        if (map != null && isMapReady) {
+            val style = map.style
+            if (style != null) {
+                addedLayerIds.forEach { id ->
+                    try {
+                        style.removeLayer(id)
+                    } catch (_: Exception) {}
+                }
+                addedSourceIds.forEach { id ->
+                    try {
+                        style.removeSource(id)
+                    } catch (_: Exception) {}
+                }
+
+                val newLayerIds = mutableListOf<String>()
+                val newSourceIds = mutableListOf<String>()
+                val allPoints = mutableListOf<LatLng>()
+
+                activeJourney?.legs?.forEachIndexed { index, leg ->
+                    val coords = leg.coordinates
+                    if (!coords.isNullOrEmpty()) {
+                        val points = mutableListOf<Point>()
+                        for (coord in coords) {
+                            if (coord.size >= 2) {
+                                val lat = coord[0]
+                                val lon = coord[1]
+                                points.add(Point.fromLngLat(lon, lat))
+                                allPoints.add(LatLng(lat, lon))
+                            }
+                        }
+
+                        if (points.size >= 2) {
+                            val lineString = LineString.fromLngLats(points)
+                            val sourceId = "journey-source-$index"
+                            val layerId = "journey-layer-$index"
+
+                            try {
+                                val source = GeoJsonSource(sourceId, FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+                                style.addSource(source)
+                                newSourceIds.add(sourceId)
+
+                                val isDashed = leg.type == LegType.WALK || leg.type == LegType.BIKE
+                                val hexColor = if (isDashed) {
+                                    "#757575"
+                                } else {
+                                    val c = leg.route?.color
+                                    if (c != null && c.isNotEmpty()) {
+                                        if (c.startsWith("#")) c else "#$c"
+                                    } else {
+                                        "#0071BD"
+                                    }
+                                }
+
+                                val parsedColor = try {
+                                    AndroidColor.parseColor(hexColor)
+                                } catch (_: Exception) {
+                                    if (isDashed) AndroidColor.GRAY else AndroidColor.parseColor("#0071BD")
+                                }
+
+                                val layer = LineLayer(layerId, sourceId).apply {
+                                    val dynamicLineWidth = if (isDashed) {
+                                        interpolate(
+                                            exponential(1.5f),
+                                            zoom(),
+                                            stop(10f, 1.8f),
+                                            stop(13f, 3.0f),
+                                            stop(16f, 4.5f)
+                                        )
+                                    } else {
+                                        interpolate(
+                                            exponential(1.5f),
+                                            zoom(),
+                                            stop(9f, 2.5f),
+                                            stop(12f, 4.5f),
+                                            stop(15f, 7.5f),
+                                            stop(18f, 10.0f)
+                                        )
+                                    }
+
+                                    setProperties(
+                                        PropertyFactory.lineColor(parsedColor),
+                                        PropertyFactory.lineWidth(dynamicLineWidth),
+                                        PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                                        PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+                                    )
+                                    if (isDashed) {
+                                        setProperties(
+                                            PropertyFactory.lineDasharray(arrayOf(1.8f, 1.8f))
+                                        )
+                                    }
+                                }
+                                style.addLayer(layer)
+                                newLayerIds.add(layerId)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
+
+                addedLayerIds = newLayerIds
+                addedSourceIds = newSourceIds
+
+                if (allPoints.isNotEmpty()) {
+                    try {
+                        val boundsBuilder = LatLngBounds.Builder()
+                        allPoints.forEach { boundsBuilder.include(it) }
+                        val bounds = boundsBuilder.build()
+                        val paddingPx = (64 * context.resources.displayMetrics.density).toInt()
+                        val update = CameraUpdateFactory.newLatLngBounds(bounds, paddingPx)
+                        map.animateCamera(update, 1000)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
     }

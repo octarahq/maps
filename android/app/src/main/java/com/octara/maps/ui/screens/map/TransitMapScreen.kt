@@ -282,13 +282,9 @@ fun TransitMapScreen(
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.PartiallyExpanded,
         confirmValueChange = { newValue ->
-            if (newValue == SheetValue.Hidden) {
-                isDismissibleState.value
-            } else {
-                true
-            }
+            newValue != SheetValue.Hidden
         },
-        skipHiddenState = false
+        skipHiddenState = true
     )
     val scaffoldState = rememberBottomSheetScaffoldState(
         bottomSheetState = sheetState
@@ -305,7 +301,11 @@ fun TransitMapScreen(
         targetCoords = currentScreen.mapTarget
         targetTitle = currentScreen.mapTitle
         try {
-            sheetState.partialExpand()
+            if (currentScreen.initialSheetValue == SheetValue.Expanded) {
+                sheetState.expand()
+            } else {
+                sheetState.partialExpand()
+            }
         } catch (_: Exception) {
         }
     }
@@ -338,7 +338,8 @@ fun TransitMapScreen(
                 cameraZoom = currentScreen.cameraZoom,
                 bottomPaddingPx = sheetPeekHeightPx,
                 markerPosition = targetCoords,
-                markerTitle = targetTitle
+                markerTitle = targetTitle,
+                activeJourney = router.activeJourney
             )
 
             AnimatedVisibility(

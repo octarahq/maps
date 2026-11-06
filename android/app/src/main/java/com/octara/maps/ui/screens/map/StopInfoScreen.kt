@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,6 +64,7 @@ import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.RouteTypeIcon
 import com.octara.maps.ui.theme.AppDimensions
 import com.octara.maps.utils.Api
+import com.octara.maps.navigation.Screen
 import kotlinx.coroutines.delay
 
 private fun parseDepartureTime(time: String): String {
@@ -454,6 +456,41 @@ fun StopInfoSheetContent(
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Button(
+                onClick = {
+                    router.navigateTo(
+                        Screen.JourneyPlanner(
+                            toStopId = info.stop.id,
+                            toStopName = info.stop.name
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Itineraire",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Itinéraire",
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
