@@ -109,6 +109,7 @@ import com.octara.maps.types.RouteType
 import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
+import com.octara.maps.ui.components.PositionPicker
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -206,6 +207,10 @@ fun JourneyPlannerSheetContent(
             isLoading = false
         }
     }
+
+    var currentFromStopName by remember { mutableStateOf("Ma position") }
+    var currentToStopName by remember { mutableStateOf(toStopName) }
+    var activePickerTarget by remember { mutableStateOf<String?>(null) }
 
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isMenuExpanded by remember { mutableStateOf(false) }
@@ -321,11 +326,11 @@ fun JourneyPlannerSheetContent(
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         val fromIsCurrentLocation = journeyConfig.from is Position.CurrentLocation
-        val fromText = if (fromIsCurrentLocation) "Ma position" else toStopName
+        val fromText = if (fromIsCurrentLocation) "Ma position" else currentFromStopName
         val fromColor = if (fromIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
 
         val toIsCurrentLocation = journeyConfig.to is Position.CurrentLocation
-        val toText = if (toIsCurrentLocation) "Ma position" else toStopName
+        val toText = if (toIsCurrentLocation) "Ma position" else currentToStopName
         val toColor = if (toIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
 
         Surface(
@@ -334,7 +339,7 @@ fun JourneyPlannerSheetContent(
             color = Color(0xFFE8E8ED)
         ) {
             Box(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Column(
@@ -342,13 +347,22 @@ fun JourneyPlannerSheetContent(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                activePickerTarget = "from"
+                            }
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
                     ) {
                         Text(
                             text = fromText,
-                            color = fromColor,
+                            color = Color.Black,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 48.dp)
                         )
                     }
                     HorizontalDivider(
@@ -360,13 +374,22 @@ fun JourneyPlannerSheetContent(
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                activePickerTarget = "to"
+                            }
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
                     ) {
                         Text(
                             text = toText,
-                            color = toColor,
+                            color = Color.Black,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 48.dp)
                         )
                     }
                 }
@@ -380,9 +403,15 @@ fun JourneyPlannerSheetContent(
                         .height(32.dp)
                         .clip(RoundedCornerShape(percent = 50))
                         .clickable {
+                            val prevFrom = journeyConfig.from
+                            val prevTo = journeyConfig.to
+                            val prevFromName = currentFromStopName
+                            val prevToName = currentToStopName
+                            currentFromStopName = prevToName
+                            currentToStopName = prevFromName
                             journeyConfig = journeyConfig.copy(
-                                from = journeyConfig.to,
-                                to = journeyConfig.from
+                                from = prevTo,
+                                to = prevFrom
                             )
                         }
                 ) {
@@ -818,6 +847,30 @@ fun JourneyPlannerSheetContent(
         for (leg in journey?.legs.orEmpty()) {
             JourneyLegItem(leg = leg)
             Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+
+    if (activePickerTarget != null) {
+        Dialog(
+            onDismissRequest = { activePickerTarget = null },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            PositionPicker(
+                onDismiss = { activePickerTarget = null },
+                onSelectPosition = { pos, name ->
+                    if (activePickerTarget == "from") {
+                        currentFromStopName = name
+                        journeyConfig = journeyConfig.copy(from = pos)
+                    } else if (activePickerTarget == "to") {
+                        currentToStopName = name
+                        journeyConfig = journeyConfig.copy(to = pos)
+                    }
+                    activePickerTarget = null
+                }
+            )
         }
     }
 }
