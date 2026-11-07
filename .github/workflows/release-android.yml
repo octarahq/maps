@@ -1,13 +1,21 @@
 name: Build and Upload Android Release APK
 
 on:
+  push:
+    tags:
+      - 'android-*'
+      - 'all-*'
   release:
     types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-and-upload:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref_name, 'android-') || startsWith(github.ref_name, 'all-')
+    if: startsWith(github.ref_name, 'android-') || startsWith(github.ref_name, 'all-') || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository
@@ -21,29 +29,35 @@ jobs:
           cache: 'gradle'
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: chmod +x android/gradlew
 
-      - name: Build Android Release APK (unsigned)
-        run: ./gradlew assembleRelease
+      - name: Build Android Release APK
+        run: cd android && ./gradlew assembleRelease
 
       - name: Prepare APK name with tag version
         id: prepare_apk
         run: |
           VERSION="${GITHUB_REF_NAME#*-}"
+          [ -z "$VERSION" ] && VERSION="latest"
           NEW_NAME="maps-${VERSION}.apk"
 
-          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          APK_PATH=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
 
           if [ -z "$APK_PATH" ]; then
-            echo "Erreur : Aucun APK trouvé dans app/build/outputs/apk/release/"
+            echo "Erreur : Aucun APK trouvé dans android/app/build/outputs/apk/release/"
             exit 1
           fi
 
-          mv "$APK_PATH" "$NEW_NAME"
+          cp "$APK_PATH" "$NEW_NAME"
           echo "apk_file=$NEW_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" "${{ steps.prepare_apk.outputs.apk_file }}" --clobber
+          TAG="${GITHUB_REF_NAME}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "${{ steps.prepare_apk.outputs.apk_file }}" --title "Release $TAG" --generate-notes
+          else
+            gh release upload "$TAG" "${{ steps.prepare_apk.outputs.apk_file }}" --clobber
+          fi
