@@ -106,6 +106,8 @@ import com.octara.maps.types.TimeType
 import com.octara.maps.types.Route
 import com.octara.maps.types.Accessibility
 import com.octara.maps.types.RouteType
+import com.octara.maps.types.TrainPosition
+import com.octara.maps.types.TripPositionInTrain
 import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
@@ -1179,6 +1181,107 @@ fun TransitLegItem(leg: TripLeg) {
                                     strokeWidth = 2.5.dp.toPx()
                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        val posInTrain = leg.positionInTrain
+        if (posInTrain != null && posInTrain.nbWagons != 0) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(16.dp)
+                        .fillMaxHeight()
+                        .background(tColor)
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, top = 4.dp, bottom = 6.dp)
+                ) {
+                    Text(
+                        text = when (posInTrain.posAvg) {
+                            TrainPosition.FRONT -> "Montez à l'avant du train (wagon ${posInTrain.wagon})"
+                            TrainPosition.MIDDLE -> "Montez au milieu du train (wagon ${posInTrain.wagon})"
+                            TrainPosition.BACK -> "Montez à l'arrière du train (wagon ${posInTrain.wagon})"
+                            else -> "Montez dans le wagon ${posInTrain.wagon}"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = tColor
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val highlightedIndex = when (posInTrain.posAvg) {
+                        TrainPosition.FRONT -> 0
+                        TrainPosition.MIDDLE -> 1
+                        TrainPosition.BACK -> 2
+                        TrainPosition.UNKNOWN -> -1
+                    }
+
+                    Row(
+                        modifier = Modifier.height(20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
+                            val isHighlighted = highlightedIndex == 0
+                            val color = if (isHighlighted) tColor else tColor.copy(alpha = 0.22f)
+                            val w = size.width
+                            val h = size.height
+                            val r = 2.5.dp.toPx()
+
+                            val path = Path().apply {
+                                moveTo(0f, h - r)
+                                cubicTo(0f, h * 0.45f, w * 0.25f, 0f, w * 0.6f, 0f)
+                                lineTo(w - r, 0f)
+                                quadraticTo(w, 0f, w, r)
+                                lineTo(w, h - r)
+                                quadraticTo(w, h, w - r, h)
+                                lineTo(r, h)
+                                quadraticTo(0f, h, 0f, h - r)
+                                close()
+                            }
+                            drawPath(path, color = color)
+                        }
+
+                        Canvas(modifier = Modifier.width(48.dp).fillMaxHeight()) {
+                            val isHighlighted = highlightedIndex == 1
+                            val color = if (isHighlighted) tColor else tColor.copy(alpha = 0.22f)
+                            val r = 3.dp.toPx()
+                            drawRoundRect(
+                                color = color,
+                                cornerRadius = CornerRadius(r, r)
+                            )
+                        }
+
+                        Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
+                            val isHighlighted = highlightedIndex == 2
+                            val color = if (isHighlighted) tColor else tColor.copy(alpha = 0.22f)
+                            val w = size.width
+                            val h = size.height
+                            val r = 2.5.dp.toPx()
+
+                            val path = Path().apply {
+                                moveTo(0f, r)
+                                quadraticTo(0f, 0f, r, 0f)
+                                lineTo(w * 0.4f, 0f)
+                                cubicTo(w * 0.75f, 0f, w, h * 0.45f, w, h - r)
+                                quadraticTo(w, h, w - r, h)
+                                lineTo(r, h)
+                                quadraticTo(0f, h, 0f, h - r)
+                                close()
+                            }
+                            drawPath(path, color = color)
                         }
                     }
                 }
