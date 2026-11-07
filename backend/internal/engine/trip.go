@@ -207,13 +207,15 @@ func (e *Engine) edgesToParsedTripDeparture(
 				route := routes[edge.RID]
 
 				leg.Route = &types.RouteSummary{
-					RID:       utils.IdRemoveIDFMPrefix(route.RID),
-					ShortName: route.SName,
-					LongName:  route.LName,
-					RouteType: route.RType,
-					Color:     route.Color,
-					TextColor: route.TColor,
-					Picto:     route.Picto,
+					RID:             utils.IdRemoveIDFMPrefix(route.RID),
+					ShortName:       route.SName,
+					LongName:        route.LName,
+					RouteType:       route.RType,
+					Color:           route.Color,
+					TextColor:       route.TColor,
+					Picto:           route.Picto,
+					VehicleImage:    route.VehicleImage,
+					VehicleCarriage: route.VehicleCarriage,
 				}
 
 				tPos, hasPos := utils.IndexPositionInTrainsByTripKey(e.Net.PositionsInTrain)[fmt.Sprintf("%s-%s;%s", utils.IdRemoveIDFMPrefix(edge.FromSID), utils.IdRemoveIDFMPrefix(edge.ToSID), utils.IdRemoveIDFMPrefix(edge.RID))]
@@ -585,13 +587,15 @@ func (e *Engine) edgesToParsedTripArrival(
 			if legType == types.LegTypeTransit {
 				route := routes[edge.RID]
 				leg.Route = &types.RouteSummary{
-					RID:       utils.IdRemoveIDFMPrefix(route.RID),
-					ShortName: route.SName,
-					LongName:  route.LName,
-					RouteType: route.RType,
-					Color:     route.Color,
-					TextColor: route.TColor,
-					Picto:     route.Picto,
+					RID:             utils.IdRemoveIDFMPrefix(route.RID),
+					ShortName:       route.SName,
+					LongName:        route.LName,
+					RouteType:       route.RType,
+					Color:           route.Color,
+					TextColor:       route.TColor,
+					Picto:           route.Picto,
+					VehicleImage:    route.VehicleImage,
+					VehicleCarriage: route.VehicleCarriage,
 				}
 				tPos, hasPos := utils.IndexPositionInTrainsByTripKey(e.Net.PositionsInTrain)[fmt.Sprintf("%s-%s;%s", utils.IdRemoveIDFMPrefix(edge.FromSID), utils.IdRemoveIDFMPrefix(edge.ToSID), utils.IdRemoveIDFMPrefix(edge.RID))]
 				if hasPos {

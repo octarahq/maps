@@ -274,3 +274,123 @@ func EnrichRoutesWithPictos(routes []types.Route, lines []types.LineReferentiel)
 		}
 	}
 }
+
+// EnrichRoutesWithVehicles assigns realistic IDFM vehicle illustrations to routes.
+func EnrichRoutesWithVehicles(routes []types.Route) {
+	for i := range routes {
+		r := &routes[i]
+		sname := strings.TrimSpace(r.SName)
+		snameUpper := strings.ToUpper(sname)
+		lnameUpper := strings.ToUpper(strings.TrimSpace(r.LName))
+
+		switch {
+		// 1. RER
+		case (sname == "A" || sname == "B" || sname == "C" || sname == "D" || sname == "E") &&
+			(r.RType == types.RouteTypeTrain || strings.Contains(lnameUpper, "RER")):
+			switch sname {
+			case "A":
+				r.VehicleImage = "IDFM-rer-a.png"
+			case "B":
+				r.VehicleImage = "IDFM-rer-b.png"
+				r.VehicleCarriage = "IDFM-rer-b-carriage.png"
+			case "C":
+				r.VehicleImage = "IDFM-rer-c.png"
+			case "D":
+				r.VehicleImage = "IDFM-rer-d.png"
+			case "E":
+				r.VehicleImage = "IDFM-rer-ng.png"
+			}
+
+		// 2. Transilien
+		case (sname == "H" || sname == "J" || sname == "K" || sname == "L" || sname == "N" ||
+			sname == "P" || sname == "R" || sname == "U" || sname == "V") && r.RType == types.RouteTypeTrain:
+			switch sname {
+			case "H", "J", "K", "L", "P":
+				r.VehicleImage = "IDFM-train-francilien.png"
+			case "N", "R":
+				r.VehicleImage = "IDFM-train-regio2n.png"
+			case "U":
+				r.VehicleImage = "IDFM-rer-c.png"
+			default:
+				r.VehicleImage = "IDFM-train-ter.png"
+			}
+
+		// 3. Métro
+		case r.RType == types.RouteTypeMetro || strings.Contains(lnameUpper, "MÉTRO") || strings.Contains(lnameUpper, "METRO"):
+			switch sname {
+			case "1":
+				r.VehicleImage = "IDFM-metro-1.png"
+			case "2":
+				r.VehicleImage = "IDFM-metro-2.png"
+			case "3", "3B", "3b":
+				r.VehicleImage = "IDFM-metro-3.png"
+			case "6":
+				r.VehicleImage = "IDFM-metro-6.png"
+				r.VehicleCarriage = "IDFM-metro-6-carriage.png"
+			case "7", "7B", "7b":
+				r.VehicleImage = "IDFM-metro-7.png"
+			case "14":
+				r.VehicleImage = "IDFM-metro-14.png"
+				r.VehicleCarriage = "IDFM-metro-14-carriage.png"
+			case "4", "11", "15", "16", "17", "18":
+				r.VehicleImage = "IDFM-metro-mp14.png"
+			case "5", "8", "9", "10", "12", "13":
+				r.VehicleImage = "IDFM-metro-mf19.png"
+				r.VehicleCarriage = "IDFM-metro-mf19-carriage.png"
+			default:
+				r.VehicleImage = "IDFM-metro-1.png"
+			}
+
+		// 4. Tramway
+		case r.RType == types.RouteTypeTram:
+			switch snameUpper {
+			case "T1", "1":
+				r.VehicleImage = "IDFM-tram-1.png"
+			case "T2", "2":
+				r.VehicleImage = "IDFM-tram-2.png"
+			case "T3A", "T3B", "3A", "3B":
+				r.VehicleImage = "IDFM-tram-3.png"
+			case "T4", "4":
+				r.VehicleImage = "IDFM-tram-4.png"
+			case "T5", "5":
+				r.VehicleImage = "IDFM-tram-5.png"
+			case "T7", "7":
+				r.VehicleImage = "IDFM-tram-7.png"
+				r.VehicleCarriage = "IDFM-tram-7-carriage.png"
+			case "T9", "T10", "9", "10":
+				r.VehicleImage = "IDFM-tram-9.png"
+			case "T11", "T12", "T13", "11", "12", "13":
+				r.VehicleImage = "IDFM-tram-4.png" // Tram-train Citadis Dualis
+			default:
+				r.VehicleImage = "IDFM-tram-1.png"
+			}
+
+		// 5. Cable / Téléphérique
+		case r.RType == types.RouteTypeAerialLift || r.RType == types.RouteTypeCableTram || r.RType == types.RouteTypeFunicular ||
+			strings.Contains(lnameUpper, "CÂBLE") || strings.Contains(lnameUpper, "CABLE"):
+			r.VehicleImage = "IDFM-cable.png"
+
+		// 6. Bus
+		case r.RType == types.RouteTypeBus:
+			switch {
+			case strings.Contains(snameUpper, "TZEN") || strings.Contains(lnameUpper, "TZEN") ||
+				snameUpper == "TVM" || snameUpper == "393":
+				r.VehicleImage = "IDFM-bus-tzen.png"
+			case strings.HasPrefix(snameUpper, "N") && len(sname) <= 4:
+				r.VehicleImage = "IDFM-bus-noctilien.png"
+			case snameUpper == "PC" || snameUpper == "91" || snameUpper == "183" || snameUpper == "272" ||
+				snameUpper == "26" || snameUpper == "38" || snameUpper == "43" || snameUpper == "62" ||
+				snameUpper == "80" || snameUpper == "95" || snameUpper == "ROISSYBUS" || snameUpper == "ORLYBUS":
+				r.VehicleImage = "IDFM-bus-articule.png"
+			case strings.Contains(lnameUpper, "NAVETTE") || strings.Contains(lnameUpper, "ELECTRIQUE") ||
+				strings.Contains(lnameUpper, "APTIS") || snameUpper == "TRAVERSIERE" || snameUpper == "TUB":
+				r.VehicleImage = "IDFM-bus-electrique.png"
+			default:
+				r.VehicleImage = "IDFM-bus-default.png"
+			}
+
+		default:
+			r.VehicleImage = "IDFM-bus-default.png"
+		}
+	}
+}

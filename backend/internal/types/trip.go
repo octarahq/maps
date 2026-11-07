@@ -58,10 +58,12 @@ type RouteSummary struct {
 	RID       string    `json:"rid"`
 	ShortName string    `json:"short_name"`
 	LongName  string    `json:"long_name"`
-	RouteType RouteType `json:"route_type"`
-	Color     string    `json:"color"`
-	TextColor string    `json:"text_color"`
-	Picto     string    `json:"picto,omitempty"`
+	RouteType       RouteType `json:"route_type"`
+	Color           string    `json:"color"`
+	TextColor       string    `json:"text_color"`
+	Picto           string    `json:"picto,omitempty"`
+	VehicleImage    string    `json:"vehicle_image,omitempty"`
+	VehicleCarriage string    `json:"vehicle_carriage,omitempty"`
 }
 
 type IntermediateStop struct {

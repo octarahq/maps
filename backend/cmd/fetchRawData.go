@@ -130,6 +130,7 @@ func buildNetWork(path string) io.Reader {
 			}
 			linesFile.Close()
 		}
+		utils.EnrichRoutesWithVehicles(routes)
 
 		tripsFile, err := readFile(fmt.Sprintf("%s/trips.txt", path))
 		if err != nil {

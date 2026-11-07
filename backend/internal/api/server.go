@@ -16,6 +16,9 @@ func StartApi(engine engine.Engine) {
 
 	pages.Register(router, engine)
 
+	router.Static("/images", "./data/images")
+	router.Static("/data/images", "./data/images")
+
 	api := router.Group("/api")
 	{
 		api.Use(func(ctx *gin.Context) {

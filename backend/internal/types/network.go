@@ -140,14 +140,16 @@ type Stop struct {
 }
 
 type Route struct {
-	RID      string    `csv:"route_id" json:"id"`
-	AgencyID string    `csv:"agency_id" json:"agencyid"`
-	SName    string    `csv:"route_short_name" json:"short_name"`
-	LName    string    `csv:"route_long_name" json:"long_name"`
-	RType    RouteType `csv:"route_type" json:"type"`
-	Color    string    `csv:"route_color" json:"color"`
-	TColor   string    `csv:"route_text_color" json:"tcolor"`
-	Picto    string    `json:"picto"`
+	RID             string    `csv:"route_id" json:"id"`
+	AgencyID        string    `csv:"agency_id" json:"agencyid"`
+	SName           string    `csv:"route_short_name" json:"short_name"`
+	LName           string    `csv:"route_long_name" json:"long_name"`
+	RType           RouteType `csv:"route_type" json:"type"`
+	Color           string    `csv:"route_color" json:"color"`
+	TColor          string    `csv:"route_text_color" json:"tcolor"`
+	Picto           string    `json:"picto,omitempty"`
+	VehicleImage    string    `json:"vehicle_image,omitempty"`
+	VehicleCarriage string    `json:"vehicle_carriage,omitempty"`
 }
 
 type Trip struct {
