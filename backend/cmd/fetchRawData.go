@@ -46,7 +46,7 @@ var DataUrls = []struct {
 	},
 	{
 		Name:     "lines.csv",
-		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/referentiel-des-lignes/exports/csv?limit=10000",
+		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/referentiel-des-lignes/exports/csv",
 		FileType: "csv",
 	},
 }
