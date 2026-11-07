@@ -44,6 +44,7 @@ func StartEngine() Engine {
 		log.Fatal(err)
 	}
 	e.Net = *net
+	utils.EnrichRoutesWithVehicles(e.Net.Routes)
 
 	for _, s := range e.Net.Stops {
 		clean := utils.IdRemoveIDFMPrefix(s.SID)
