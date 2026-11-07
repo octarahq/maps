@@ -4,7 +4,6 @@ import (
 	"maps/backend/internal/engine"
 	"maps/backend/internal/utils"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,17 +38,10 @@ func init() {
 		Method: http.MethodGet,
 		Path:   "/routes/:rid/departures",
 		Handler: func(c *gin.Context, e engine.Engine) {
-			targetTime := time.Now()
+			targetTime := utils.NowInParis()
 			if timeParam := c.Query("time"); timeParam != "" {
-				if t, err := time.Parse(time.RFC3339, timeParam); err == nil {
+				if t, ok := utils.ParseCustomTimeInParis(timeParam); ok {
 					targetTime = t
-				} else if t, err := time.Parse("2006-01-02T15:04:05", timeParam); err == nil {
-					targetTime = t
-				} else if t, err := time.Parse("2006-01-02T15:04", timeParam); err == nil {
-					targetTime = t
-				} else if t, err := time.Parse("15:04", timeParam); err == nil {
-					now := time.Now()
-					targetTime = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location())
 				}
 			}
 

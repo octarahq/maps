@@ -10,9 +10,7 @@ import (
 )
 
 func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) []types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
@@ -21,36 +19,79 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 	baseDate := time.Date(year, month, day, 0, 0, 0, 0, targetTime.Location())
 
 	cleanSID := utils.IdRemoveIDFMPrefix(stopID)
-	edges := e.Graph[stopID]
-	if len(edges) == 0 {
-		edges = e.Graph["IDFM:"+stopID]
-	}
-	if len(edges) == 0 {
-		edges = e.Graph["IDFM:"+cleanSID]
-	}
-	if len(edges) == 0 {
-		edges = e.Graph[cleanSID]
+	edges := e.GetEdgesForStop(stopID)
+
+	var children []string
+	if parent, ok := e.SearchParentsStopById(stopID); ok && len(parent.ChildrenStops) > 0 {
+		children = parent.ChildrenStops
+	} else if parent, ok := e.SearchParentsStopById(cleanSID); ok && len(parent.ChildrenStops) > 0 {
+		children = parent.ChildrenStops
+	} else if ch, ok := e.childrenByParent[cleanSID]; ok && len(ch) > 0 {
+		children = ch
 	}
 
-	hasTransit := false
-	for _, edge := range edges {
-		if edge.RID != "" {
-			hasTransit = true
-			break
-		}
-	}
-
-	if !hasTransit {
-		if parent, ok := e.SearchParentsStopById(stopID); ok && len(parent.ChildrenStops) > 0 {
-			allResults := make([]types.DepartureInfo, 0)
-			for _, childSID := range parent.ChildrenStops {
-				allResults = append(allResults, e.GetNextDeparturesForStop(childSID, targetTime)...)
+	if len(children) > 0 {
+		allResults := make([]types.DepartureInfo, 0)
+		seenKey := make(map[string]bool)
+		for _, childSID := range children {
+			if utils.IdRemoveIDFMPrefix(childSID) == cleanSID || childSID == stopID {
+				continue
 			}
-			sort.Slice(allResults, func(i, j int) bool {
-				return allResults[i].DepSec < allResults[j].DepSec
-			})
-			return allResults
+			for _, dep := range e.GetNextDeparturesForStop(childSID, targetTime) {
+				key := fmt.Sprintf("%s-%s-%d", dep.RID, dep.Headsign, dep.DepSec)
+				if !seenKey[key] {
+					seenKey[key] = true
+					allResults = append(allResults, dep)
+				}
+			}
 		}
+
+		routes := utils.IndexRoutesByID(e.Net.Routes)
+		for _, edge := range edges {
+			if edge.RID == "" {
+				continue
+			}
+			sched, ok := utils.FindNextDeparture(edge.Schedules, currSec, activeServices)
+			if !ok {
+				continue
+			}
+			route := routes[edge.RID]
+			name := route.SName
+			if name == "" {
+				name = route.LName
+			}
+			waitSec := int(sched.Dep) - int(currSec)
+			waitMin := float64(waitSec) / 60.0
+			if waitMin < 0 {
+				waitMin = 0
+			}
+			cleanRID := utils.IdRemoveIDFMPrefix(route.RID)
+			if cleanRID == "" {
+				cleanRID = utils.IdRemoveIDFMPrefix(edge.RID)
+			}
+			dep := types.DepartureInfo{
+				RID:         cleanRID,
+				RName:       name,
+				RColor:      route.Color,
+				RType:       route.RType,
+				Picto:       route.Picto,
+				Headsign:    edge.Headsign,
+				DepSec:      int(sched.Dep),
+				Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),
+				TimeString:  fmt.Sprintf("%02d:%02d", sched.Dep/3600, (sched.Dep%3600)/60),
+				WaitMinutes: waitMin,
+			}
+			key := fmt.Sprintf("%s-%s-%d", dep.RID, dep.Headsign, dep.DepSec)
+			if !seenKey[key] {
+				seenKey[key] = true
+				allResults = append(allResults, dep)
+			}
+		}
+
+		sort.Slice(allResults, func(i, j int) bool {
+			return allResults[i].DepSec < allResults[j].DepSec
+		})
+		return allResults
 	}
 
 	results := make([]types.DepartureInfo, 0)
@@ -88,6 +129,7 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 			RName:       name,
 			RColor:      route.Color,
 			RType:       route.RType,
+			Picto:       route.Picto,
 			Headsign:    edge.Headsign,
 			DepSec:      int(sched.Dep),
 			Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),
@@ -104,9 +146,7 @@ func (e *Engine) GetNextDeparturesForStop(stopID string, targetTime time.Time) [
 }
 
 func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map[string][]types.DepartureInfo {
-	if targetTime.IsZero() {
-		targetTime = time.Now()
-	}
+	targetTime = utils.InParis(targetTime)
 
 	activeServices := e.GetActiveServices(targetTime)
 	currSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
@@ -157,6 +197,7 @@ func (e *Engine) GetNextDeparturesForRoute(rid string, targetTime time.Time) map
 				RName:       name,
 				RColor:      route.Color,
 				RType:       route.RType,
+				Picto:       route.Picto,
 				Headsign:    edge.Headsign,
 				DepSec:      int(sched.Dep),
 				Time:        baseDate.Add(time.Duration(sched.Dep) * time.Second),

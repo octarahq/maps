@@ -37,6 +37,7 @@ type DepartureInfo struct {
 	RName       string    `json:"route_name"`
 	RColor      string    `json:"color"`
 	RType       RouteType `json:"type"`
+	Picto       string    `json:"picto,omitempty"`
 	Headsign    string    `json:"headsign"`
 	DepSec      int       `json:"dep_sec"`
 	Time        time.Time `json:"time"`

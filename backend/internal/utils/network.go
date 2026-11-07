@@ -237,6 +237,7 @@ func EnrichParentsStations(net *types.Network) {
 					Name:  name,
 					Color: r.Color,
 					RType: r.RType,
+					Picto: r.Picto,
 				})
 			}
 
@@ -246,6 +247,30 @@ func EnrichParentsStations(net *types.Network) {
 				}
 				return strings.Compare(a.Name, b.Name)
 			})
+		}
+	}
+}
+
+func EnrichRoutesWithPictos(routes []types.Route, lines []types.LineReferentiel) {
+	if len(lines) == 0 || len(routes) == 0 {
+		return
+	}
+	pictoMap := make(map[string]string, len(lines))
+	for _, l := range lines {
+		cleanID := IdRemoveIDFMPrefix(l.IDLine)
+		if cleanID == "" {
+			continue
+		}
+		pictoID := ExtractPictoID(l.Picto)
+		if pictoID != "" {
+			pictoMap[cleanID] = pictoID
+		}
+	}
+
+	for i := range routes {
+		cleanRID := IdRemoveIDFMPrefix(routes[i].RID)
+		if picto, ok := pictoMap[cleanRID]; ok {
+			routes[i].Picto = picto
 		}
 	}
 }

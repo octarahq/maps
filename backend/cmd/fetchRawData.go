@@ -44,6 +44,11 @@ var DataUrls = []struct {
 		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/stationnement-velo-en-ile-de-france/exports/csv",
 		FileType: "csv",
 	},
+	{
+		Name:     "lines.csv",
+		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/referentiel-des-lignes/exports/csv",
+		FileType: "csv",
+	},
 }
 
 func RunFetchData() {
@@ -113,6 +118,17 @@ func buildNetWork(path string) io.Reader {
 		if err != nil {
 			pw.CloseWithError(err)
 			return
+		}
+
+		linesPath := fmt.Sprintf("%s/lines.csv", path)
+		if _, statErr := os.Stat(linesPath); os.IsNotExist(statErr) {
+			linesPath = fmt.Sprintf("%s/referentiel-des-lignes.csv", path)
+		}
+		if linesFile, err := readFile(linesPath); err == nil {
+			if lines, err := parseCSV[types.LineReferentiel](';', linesFile); err == nil {
+				utils.EnrichRoutesWithPictos(routes, lines)
+			}
+			linesFile.Close()
 		}
 
 		tripsFile, err := readFile(fmt.Sprintf("%s/trips.txt", path))

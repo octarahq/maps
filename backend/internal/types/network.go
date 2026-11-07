@@ -130,50 +130,51 @@ func ParseGTFSTime(s string) (GTFSTime, error) {
 }
 
 type Stop struct {
-	SID           string        `csv:"stop_id"`
-	Name          string        `csv:"stop_name"`
-	Long          float64       `csv:"stop_lon"`
-	Lat           float64       `csv:"stop_lat"`
-	ZoneId        string        `csv:"zone_id"`
-	ParentStation string        `csv:"parent_station"`
-	WheelChair    Accessibility `csv:"wheelchair_boarding"`
+	SID           string        `csv:"stop_id" json:"id"`
+	Name          string        `csv:"stop_name" json:"name"`
+	Long          float64       `csv:"stop_lon" json:"lon"`
+	Lat           float64       `csv:"stop_lat" json:"lat"`
+	ZoneId        string        `csv:"zone_id" json:"zone"`
+	ParentStation string        `csv:"parent_station" json:"parrent_station"`
+	WheelChair    Accessibility `csv:"wheelchair_boarding" json:"wheelchair"`
 }
 
 type Route struct {
-	RID      string    `csv:"route_id"`
-	AgencyID string    `csv:"agency_id"`
-	SName    string    `csv:"route_short_name"`
-	LName    string    `csv:"route_long_name"`
-	RType    RouteType `csv:"route_type"`
-	Color    string    `csv:"route_color"`
-	TColor   string    `csv:"route_text_color"`
+	RID      string    `csv:"route_id" json:"id"`
+	AgencyID string    `csv:"agency_id" json:"agencyid"`
+	SName    string    `csv:"route_short_name" json:"short_name"`
+	LName    string    `csv:"route_long_name" json:"long_name"`
+	RType    RouteType `csv:"route_type" json:"type"`
+	Color    string    `csv:"route_color" json:"color"`
+	TColor   string    `csv:"route_text_color" json:"tcolor"`
+	Picto    string    `json:"picto"`
 }
 
 type Trip struct {
-	RID          string        `csv:"route_id"`
-	ServiceID    string        `csv:"service_id"`
-	TID          string        `csv:"trip_id"`
-	Headsign     string        `csv:"trip_headsign"`
-	SName        string        `csv:"trip_short_name"`
-	DirID        uint8         `csv:"direction_id"`
-	ShapeID      string        `csv:"shape_id"`
-	WheelChair   Accessibility `csv:"wheelchair_accessible"`
-	BikesAllowed Accessibility `csv:"bikes_allowed"`
+	RID          string        `csv:"route_id" json:"route_id"`
+	ServiceID    string        `csv:"service_id" json:"service_id"`
+	TID          string        `csv:"trip_id" json:"id"`
+	Headsign     string        `csv:"trip_headsign" json:"headsign"`
+	SName        string        `csv:"trip_short_name" json:"short_name"`
+	DirID        uint8         `csv:"direction_id" json:"dir_id"`
+	ShapeID      string        `csv:"shape_id" json:"shape_id"`
+	WheelChair   Accessibility `csv:"wheelchair_accessible" json:"wheelchair"`
+	BikesAllowed Accessibility `csv:"bikes_allowed" json:"hasbikes"`
 }
 
 type StopTime struct {
-	TID   string   `csv:"trip_id"`
-	ATime GTFSTime `csv:"arrival_time"`
-	DTime GTFSTime `csv:"departure_time"`
-	SId   string   `csv:"stop_id"`
-	Seq   uint16   `csv:"stop_sequence"`
+	TID   string   `csv:"trip_id" json:"trip_id"`
+	ATime GTFSTime `csv:"arrival_time" json:"arrival"`
+	DTime GTFSTime `csv:"departure_time" json:"departure"`
+	SId   string   `csv:"stop_id" json:"stop_id"`
+	Seq   uint16   `csv:"stop_sequence" json:"seq"`
 }
 
 type Transfer struct {
-	FromSID  string       `csv:"from_stop_id"`
-	ToSID    string       `csv:"to_stop_id"`
-	TType    TransferType `csv:"transfer_type"`
-	MinTTime uint16       `csv:"min_transfer_time"`
+	FromSID  string       `csv:"from_stop_id" json:"from_id"`
+	ToSID    string       `csv:"to_stop_id" json:"to_id"`
+	TType    TransferType `csv:"transfer_type" json:"type"`
+	MinTTime uint16       `csv:"min_transfer_time" json:"min_transfer_time"`
 }
 
 type ParentsStation struct {
@@ -191,15 +192,21 @@ type ParentsStationRoute struct {
 	Name  string    `json:"name"`
 	Color string    `json:"color"`
 	RType RouteType `json:"type"`
+	Picto string    `json:"picto,omitempty"`
+}
+
+type LineReferentiel struct {
+	IDLine string `csv:"id_line|ID_Line" json:"id_line"`
+	Picto  string `csv:"picto|Picto" json:"picto"`
 }
 
 type PositionInTrain struct {
-	FromSID     string        `csv:"from_id"`
-	ToSID       string        `csv:"to_id"`
-	RID         string        `csv:"line_id"`
-	PositionAvg TrainPosition `csv:"position_average"`
-	Pos         uint8         `csv:"position"`
-	Wagons      uint8         `csv:"position_max"`
+	FromSID     string        `csv:"from_id" json:"from_id"`
+	ToSID       string        `csv:"to_id" json:"to_id"`
+	RID         string        `csv:"line_id" json:"route_id"`
+	PositionAvg TrainPosition `csv:"position_average" json:"position_avg"`
+	Pos         uint8         `csv:"position" json:"position"`
+	Wagons      uint8         `csv:"position_max" json:"wagons"`
 }
 
 type Network struct {
