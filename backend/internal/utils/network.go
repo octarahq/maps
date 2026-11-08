@@ -275,7 +275,6 @@ func EnrichRoutesWithPictos(routes []types.Route, lines []types.LineReferentiel)
 	}
 }
 
-// EnrichRoutesWithVehicles assigns realistic IDFM vehicle illustrations to routes.
 func EnrichRoutesWithVehicles(routes []types.Route) {
 	for i := range routes {
 		r := &routes[i]
@@ -284,7 +283,6 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 		lnameUpper := strings.ToUpper(strings.TrimSpace(r.LName))
 
 		switch {
-		// 1. RER
 		case (sname == "A" || sname == "B" || sname == "C" || sname == "D" || sname == "E") &&
 			(r.RType == types.RouteTypeTrain || strings.Contains(lnameUpper, "RER")):
 			switch sname {
@@ -301,7 +299,6 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 				r.VehicleImage = "IDFM-rer-ng.png"
 			}
 
-		// 2. Transilien
 		case (sname == "H" || sname == "J" || sname == "K" || sname == "L" || sname == "N" ||
 			sname == "P" || sname == "R" || sname == "U" || sname == "V") && r.RType == types.RouteTypeTrain:
 			switch sname {
@@ -315,7 +312,6 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 				r.VehicleImage = "IDFM-train-ter.png"
 			}
 
-		// 3. Métro
 		case r.RType == types.RouteTypeMetro || strings.Contains(lnameUpper, "MÉTRO") || strings.Contains(lnameUpper, "METRO"):
 			switch sname {
 			case "1":
@@ -341,7 +337,6 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 				r.VehicleImage = "IDFM-metro-1.png"
 			}
 
-		// 4. Tramway
 		case r.RType == types.RouteTypeTram:
 			switch snameUpper {
 			case "T1", "1":
@@ -360,17 +355,15 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 			case "T9", "T10", "9", "10":
 				r.VehicleImage = "IDFM-tram-9.png"
 			case "T11", "T12", "T13", "11", "12", "13":
-				r.VehicleImage = "IDFM-tram-4.png" // Tram-train Citadis Dualis
+				r.VehicleImage = "IDFM-tram-4.png"
 			default:
 				r.VehicleImage = "IDFM-tram-1.png"
 			}
 
-		// 5. Cable / Téléphérique
 		case r.RType == types.RouteTypeAerialLift || r.RType == types.RouteTypeCableTram || r.RType == types.RouteTypeFunicular ||
 			strings.Contains(lnameUpper, "CÂBLE") || strings.Contains(lnameUpper, "CABLE"):
 			r.VehicleImage = "IDFM-cable.png"
 
-		// 6. Bus
 		case r.RType == types.RouteTypeBus:
 			switch {
 			case strings.Contains(snameUpper, "TZEN") || strings.Contains(lnameUpper, "TZEN") ||

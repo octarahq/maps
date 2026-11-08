@@ -3,9 +3,9 @@
   "deploy": {
     "clean": true,
     "exclude": [
-      "data/processed",
-      "data/raw",
-      "images",
+      "data/processed/**",
+      "data/raw/**",
+      "./images",
       ".vscode",
       "android"
     ]
