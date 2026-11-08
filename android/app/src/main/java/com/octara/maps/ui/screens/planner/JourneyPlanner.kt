@@ -202,17 +202,9 @@ fun JourneyPlannerSheetContent(
     var journeys by remember { mutableStateOf(JourneyResponse()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(
-        journeyConfig.from,
-        journeyConfig.to,
-        journeyConfig.time,
-        journeyConfig.timeType,
-        journeyConfig.allowedModes,
-        journeyConfig.withBike,
-        journeyConfig.wheelchair,
-        journeyConfig.currentGps
-    ) {
-        if (journeyConfig.currentGps == null) {
+    LaunchedEffect(journeyConfig) {
+        val needsGps = (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
+        if (needsGps && journeyConfig.currentGps == null) {
             return@LaunchedEffect
         }
         isLoading = true
@@ -842,7 +834,7 @@ fun JourneyPlannerSheetContent(
             color = Color(0xFFE0E0E0)
         )
 
-        val journey = journeys.journeys[selectedMode] ?: journeys.journeys["comfort"]
+        val journey = journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
 
         LaunchedEffect(journey) {
             router.activeJourney = journey
