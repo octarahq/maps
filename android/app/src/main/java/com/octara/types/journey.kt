@@ -98,7 +98,10 @@ data class RouteSummary(
     @SerializedName("picto") val picto: String? = null,
     @SerializedName("vehicle_image") val vehicleImage: String? = null,
     @SerializedName("vehicle_carriage") val vehicleCarriage: String? = null
-)
+) {
+    val vehiculeImageUrl: String?
+        get() = if (!vehicleImage.isNullOrEmpty()) "https://omaps-calc.orionhost.app/images/${vehicleImage}" else null
+}
 
 data class IntermediateStop(
     @SerializedName("sid") val sid: String,

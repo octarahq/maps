@@ -66,5 +66,5 @@ data class Route(
             RouteType.FUNICULAR -> "Funiculaire"
         }
     val vehiculeImageUrl: String?
-        get() = if (!vehicleImage.isNullOrEmpty()) "" else null
+        get() = if (!vehicleImage.isNullOrEmpty()) "https://omaps-calc.orionhost.app/images/${vehicleImage}" else null
 }

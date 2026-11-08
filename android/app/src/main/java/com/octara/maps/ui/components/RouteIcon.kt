@@ -91,23 +91,28 @@ fun RouteBadgeFallback(
 
     val displayName = route.name.ifEmpty { (route.short_name ?: "").ifEmpty { route.id ?: "" } }
 
+    val cornerRadius = (height * 0.2f).coerceAtLeast(3.dp)
+    val fontSize = when {
+        displayName.length > 3 -> (height.value * 0.38f).sp
+        displayName.length > 2 -> (height.value * 0.44f).sp
+        else -> (height.value * 0.52f).sp
+    }
+
     when (route.type) {
         RouteType.METRO -> {
             Box(
                 modifier = modifier
-                    .height(height)
                     .defaultMinSize(minWidth = height)
-                    .wrapContentWidth(unbounded = true)
                     .clip(CircleShape)
                     .background(bgColor)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = (height * 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = displayName,
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (displayName.length > 2) 10.sp else 12.sp,
+                    fontSize = fontSize,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center
@@ -118,19 +123,17 @@ fun RouteBadgeFallback(
         RouteType.TRAIN -> {
             Box(
                 modifier = modifier
-                    .height(height)
                     .defaultMinSize(minWidth = height)
-                    .wrapContentWidth(unbounded = true)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(cornerRadius))
                     .background(bgColor)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = (height * 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = displayName,
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (displayName.length > 2) 10.sp else 12.sp,
+                    fontSize = fontSize,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center

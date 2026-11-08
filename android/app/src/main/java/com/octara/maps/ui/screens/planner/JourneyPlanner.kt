@@ -113,6 +113,10 @@ import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.PositionPicker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.graphicsLayer
 import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
@@ -198,7 +202,16 @@ fun JourneyPlannerSheetContent(
     var journeys by remember { mutableStateOf(JourneyResponse()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(journeyConfig) {
+    LaunchedEffect(
+        journeyConfig.from,
+        journeyConfig.to,
+        journeyConfig.time,
+        journeyConfig.timeType,
+        journeyConfig.allowedModes,
+        journeyConfig.withBike,
+        journeyConfig.wheelchair,
+        journeyConfig.currentGps
+    ) {
         if (journeyConfig.currentGps == null) {
             return@LaunchedEffect
         }
@@ -982,7 +995,7 @@ fun TransitLegItem(leg: TripLeg) {
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         val barWidth = 16.dp
-        val iconHeight = 24.dp
+        val iconHeight = 22.dp
         val iconLeftOffset = (barWidth - iconHeight) / 2
 
         if (route != null) {
@@ -992,12 +1005,35 @@ fun TransitLegItem(leg: TripLeg) {
                     .padding(bottom = 6.dp)
             ) {
                 route.vehiculeImageUrl?.let { url ->
-                    AsyncImage(
-                        model = url,
-                        contentDescription = "Véhicule",
-                        modifier = Modifier.height(iconHeight),
-                        contentScale = ContentScale.Fit
-                    )
+                    val vehicleCardHeight = 34.dp
+                    val vehicleCardWidth = 70.dp
+                    Box(
+                        modifier = Modifier
+                            .height(vehicleCardHeight)
+                            .width(vehicleCardWidth)
+                            .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
+                    ) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = "Véhicule",
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .align(Alignment.CenterEnd)
+                                .graphicsLayer { alpha = 0.99f }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawRect(
+                                        brush = Brush.horizontalGradient(
+                                            0.0f to Color.Transparent,
+                                            0.35f to Color.Black
+                                        ),
+                                        blendMode = BlendMode.DstIn
+                                    )
+                                },
+                            contentScale = ContentScale.FillHeight,
+                            alignment = Alignment.CenterEnd
+                        )
+                    }
                 }
                 RouteIcon(
                     route = Route(
