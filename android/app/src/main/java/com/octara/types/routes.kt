@@ -48,7 +48,9 @@ data class Route(
     val type: RouteType = RouteType.BUS,
     val color: String = "",
     val tcolor: String = "",
-    val picto: String? = ""
+    val picto: String? = "",
+    @SerializedName("vehicle_image") val vehicleImage: String? = null,
+    @SerializedName("vehicle_carriage") val vehicleCarriage: String? = null,
 ) {
     val name: String
         get() = if (!short_name.isNullOrEmpty()) short_name else (long_name ?: "")
@@ -63,4 +65,6 @@ data class Route(
             RouteType.AERIAL_LIFT -> "Aerial Lift"
             RouteType.FUNICULAR -> "Funiculaire"
         }
+    val vehiculeImageUrl: String?
+        get() = if (!vehicleImage.isNullOrEmpty()) "" else null
 }

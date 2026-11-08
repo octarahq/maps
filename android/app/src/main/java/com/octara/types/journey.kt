@@ -95,7 +95,9 @@ data class RouteSummary(
     @SerializedName("route_type") val routeType: RouteType,
     @SerializedName("color") val color: String,
     @SerializedName("text_color") val textColor: String,
-    @SerializedName("picto") val picto: String? = null
+    @SerializedName("picto") val picto: String? = null,
+    @SerializedName("vehicle_image") val vehicleImage: String? = null,
+    @SerializedName("vehicle_carriage") val vehicleCarriage: String? = null
 )
 
 data class IntermediateStop(
