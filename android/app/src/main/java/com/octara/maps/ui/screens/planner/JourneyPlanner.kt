@@ -112,11 +112,14 @@ import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.PositionPicker
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -988,6 +991,14 @@ fun TransitLegItem(leg: TripLeg) {
                     .offset(x = iconLeftOffset)
                     .padding(bottom = 6.dp)
             ) {
+                route.vehiculeImageUrl?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "Véhicule",
+                        modifier = Modifier.height(iconHeight),
+                        contentScale = ContentScale.Fit
+                    )
+                }
                 RouteIcon(
                     route = Route(
                         id = route.rid,
