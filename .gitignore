@@ -8,3 +8,4 @@ data/*
 android/app/build
 android/.gradle
 android/.kotlin
+/tmp

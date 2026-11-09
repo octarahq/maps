@@ -5,6 +5,7 @@
     "exclude": [
       "data/processed/**",
       "data/raw/**",
+      "data/backup/**",
       "./images",
       ".vscode",
       "android"
