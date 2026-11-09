@@ -203,7 +203,8 @@ fun JourneyPlannerSheetContent(
     var isLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(journeyConfig) {
-        val needsGps = (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
+        val needsGps =
+            (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
         if (needsGps && journeyConfig.currentGps == null) {
             return@LaunchedEffect
         }
@@ -834,7 +835,8 @@ fun JourneyPlannerSheetContent(
             color = Color(0xFFE0E0E0)
         )
 
-        val journey = journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
+        val journey =
+            journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
 
         LaunchedEffect(journey) {
             router.activeJourney = journey
@@ -993,24 +995,24 @@ fun TransitLegItem(leg: TripLeg) {
         if (route != null) {
             Box(
                 modifier = Modifier
-                    .offset(x = iconLeftOffset)
+                    .fillMaxWidth()
                     .padding(bottom = 6.dp)
             ) {
                 route.vehiculeImageUrl?.let { url ->
                     val vehicleCardHeight = 34.dp
-                    val vehicleCardWidth = 70.dp
                     Box(
                         modifier = Modifier
+                            .offset(x = iconLeftOffset)
                             .height(vehicleCardHeight)
-                            .width(vehicleCardWidth)
-                            .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)),
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         AsyncImage(
                             model = url,
                             contentDescription = "Véhicule",
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .align(Alignment.CenterEnd)
                                 .graphicsLayer { alpha = 0.99f }
                                 .drawWithContent {
                                     drawContent()
@@ -1027,21 +1029,22 @@ fun TransitLegItem(leg: TripLeg) {
                         )
                     }
                 }
-                RouteIcon(
-                    route = Route(
-                        id = route.rid,
-                        picto = route.picto,
-                        color = route.color,
-                        tcolor = route.textColor,
-                        short_name = route.shortName,
-                        long_name = route.longName,
-                        type = route.routeType
-                    ),
-                    modifier = Modifier.height(iconHeight)
-                )
+                Box(modifier = Modifier.offset(x = iconLeftOffset)) {
+                    RouteIcon(
+                        route = Route(
+                            id = route.rid,
+                            picto = route.picto,
+                            color = route.color,
+                            tcolor = route.textColor,
+                            short_name = route.shortName,
+                            long_name = route.longName,
+                            type = route.routeType
+                        ),
+                        modifier = Modifier.height(iconHeight)
+                    )
+                }
             }
         }
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
