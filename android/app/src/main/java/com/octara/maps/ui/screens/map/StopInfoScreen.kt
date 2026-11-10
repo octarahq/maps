@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.octara.maps.navigation.LocalRouter
@@ -241,27 +242,68 @@ private fun RouteDepartureCard(
                             modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = if (!dep.headsign.isNullOrBlank()) dep.headsign else "Direction inconnue",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
+                        ) {
+                            Text(
+                                text = if (!dep.headsign.isNullOrBlank()) dep.headsign else "Direction inconnue",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val delayed = dep.is_delayed || dep.delay_sec >= 60
+                            if (delayed) {
+                                val delayMins =
+                                    if (dep.delay_minutes > 0) dep.delay_minutes else ((dep.delay_sec + 30) / 60).coerceAtLeast(
+                                        1
+                                    )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "En retard (+$delayMins min)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFD84315)
+                                    )
+                                    if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
+                                        Text(
+                                            text = dep.time_string,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD84315)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         val waitText = formatDepartureTime(dep)
                         val isImminent = dep.wait_minutes <= 1.0f
+                        val isDelayed = dep.is_delayed || dep.delay_sec >= 60
+                        val badgeBgColor = when {
+                            isDelayed -> Color(0xFFFFF3E0)
+                            isImminent -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        }
+                        val badgeTextColor = when {
+                            isDelayed -> Color(0xFFD84315)
+                            isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            color = badgeBgColor,
                             modifier = Modifier.padding(start = 4.dp)
                         ) {
                             Text(
                                 text = waitText,
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isImminent) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isImminent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (isImminent || isDelayed) FontWeight.Bold else FontWeight.SemiBold,
+                                color = badgeTextColor,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }

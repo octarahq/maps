@@ -62,6 +62,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -1102,14 +1103,30 @@ fun TransitLegItem(leg: TripLeg) {
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 val timeStr = formatTimeString(leg.departureTime)
+                val schedDepStr = formatTimeString(leg.scheduledDepartureTime)
+                val isDepDelayed =
+                    leg.departureDelaySec >= 60 || (leg.isDelayed && schedDepStr.isNotBlank() && schedDepStr != timeStr)
                 if (timeStr.isNotBlank()) {
-                    Text(
-                        text = timeStr,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF555555),
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(start = 8.dp)
-                    )
+                    ) {
+                        if (isDepDelayed && schedDepStr.isNotBlank() && schedDepStr != timeStr) {
+                            Text(
+                                text = schedDepStr,
+                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
+                                color = Color(0xFF888888)
+                            )
+                        }
+                        Text(
+                            text = timeStr,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDepDelayed) Color(0xFFD84315) else Color(0xFF555555)
+                        )
+                    }
                 }
             }
         }
@@ -1561,14 +1578,30 @@ fun TransitLegItem(leg: TripLeg) {
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             val timeStr = formatTimeString(stop.arrivalTime.ifBlank { stop.departureTime })
+                            val schedStopStr =
+                                formatTimeString(stop.scheduledArrivalTime ?: stop.scheduledDepartureTime)
+                            val isStopDelayed = stop.isDelayed || stop.delaySec >= 60
                             if (timeStr.isNotBlank() && !isBlocked) {
-                                Text(
-                                    text = timeStr,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF666666),
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(start = 8.dp)
-                                )
+                                ) {
+                                    if (isStopDelayed && schedStopStr.isNotBlank() && schedStopStr != timeStr) {
+                                        Text(
+                                            text = schedStopStr,
+                                            fontSize = 12.sp,
+                                            style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
+                                            color = Color(0xFF999999)
+                                        )
+                                    }
+                                    Text(
+                                        text = timeStr,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isStopDelayed) Color(0xFFD84315) else Color(0xFF666666)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1681,14 +1714,30 @@ fun TransitLegItem(leg: TripLeg) {
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 val timeStr = formatTimeString(leg.arrivalTime)
+                val schedArrStr = formatTimeString(leg.scheduledArrivalTime)
+                val isArrDelayed =
+                    leg.arrivalDelaySec >= 60 || (leg.isDelayed && schedArrStr.isNotBlank() && schedArrStr != timeStr)
                 if (timeStr.isNotBlank()) {
-                    Text(
-                        text = timeStr,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF555555),
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(start = 8.dp)
-                    )
+                    ) {
+                        if (isArrDelayed && schedArrStr.isNotBlank() && schedArrStr != timeStr) {
+                            Text(
+                                text = schedArrStr,
+                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
+                                color = Color(0xFF888888)
+                            )
+                        }
+                        Text(
+                            text = timeStr,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isArrDelayed) Color(0xFFD84315) else Color(0xFF555555)
+                        )
+                    }
                 }
             }
         }

@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.ui.components.AppSearchBar
@@ -59,6 +60,7 @@ import org.maplibre.android.geometry.LatLng
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.managers.FavoriteStop
 import com.octara.maps.navigation.Screen
+import com.octara.maps.types.FavoriteDepartureInfo
 import com.octara.maps.types.Route
 import com.octara.maps.ui.components.RouteIcon
 
@@ -85,7 +87,7 @@ fun TransitMapSheetContent(
     val favoritesManager = remember { FavoritesStopsManager() }
     val favoriteStops by favoritesManager.favoriteStops.collectAsState()
     var favoritesStopsNextDepartures by remember {
-        mutableStateOf<Map<Pair<String, String>, Map<String, List<Int>>>>(emptyMap())
+        mutableStateOf<Map<Pair<String, String>, Map<String, List<FavoriteDepartureInfo>>>>(emptyMap())
     }
 
     LaunchedEffect(favoriteStops) {
@@ -93,7 +95,8 @@ fun TransitMapSheetContent(
             if (favoriteStops.isNotEmpty()) {
                 try {
                     val pairs = favoriteStops.map { it.stopId to it.routeId }
-                    favoritesStopsNextDepartures = com.octara.maps.utils.Api().getNextDeparturesOfMultipleStops(pairs)
+                    favoritesStopsNextDepartures =
+                        com.octara.maps.utils.Api().getNextDepartureDetailsOfMultipleStops(pairs)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -145,7 +148,7 @@ fun TransitMapSheetContent(
 fun FavoritesStopsNextDepartures(
     modifier: Modifier = Modifier,
     favoriteStop: FavoriteStop,
-    nextDepartures: Map<String, List<Int>>,
+    nextDepartures: Map<String, List<FavoriteDepartureInfo>>,
     onClick: () -> Unit = {}
 ) {
     Card(
@@ -227,27 +230,68 @@ fun FavoritesStopsNextDepartures(
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = if (headsign.isNotEmpty()) headsign else "Direction inconnue",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    val waitText = formatDepartureTime(dep)
-                    val isImminent = (dep.toFloat() / 60.0f) <= 1.0f
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = if (headsign.isNotEmpty()) headsign else "Direction inconnue",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val delayed = dep.is_delayed || dep.delay_sec >= 60
+                        if (delayed) {
+                            val delayMins =
+                                if (dep.delay_minutes > 0) dep.delay_minutes else ((dep.delay_sec + 30) / 60).coerceAtLeast(
+                                    1
+                                )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "En retard (+$delayMins min)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFD84315)
+                                )
+                                if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
+                                    Text(
+                                        text = dep.time_string,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD84315)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    val waitText = formatDepartureTime(dep.wait_sec)
+                    val isImminent = (dep.wait_sec.toFloat() / 60.0f) <= 1.0f
+                    val isDelayed = dep.is_delayed || dep.delay_sec >= 60
+                    val badgeBgColor = when {
+                        isDelayed -> Color(0xFFFFF3E0)
+                        isImminent -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                    val badgeTextColor = when {
+                        isDelayed -> Color(0xFFD84315)
+                        isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        color = badgeBgColor,
                         modifier = Modifier.padding(start = 4.dp)
                     ) {
                         Text(
                             text = waitText,
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isImminent) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (isImminent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (isImminent || isDelayed) FontWeight.Bold else FontWeight.SemiBold,
+                            color = badgeTextColor,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }

@@ -73,6 +73,11 @@ data class TripLeg(
     @SerializedName("to_lon") val toLon: Double = 0.0,
     @SerializedName("departure_time") val departureTime: String,
     @SerializedName("arrival_time") val arrivalTime: String,
+    @SerializedName("scheduled_departure_time") val scheduledDepartureTime: String? = null,
+    @SerializedName("scheduled_arrival_time") val scheduledArrivalTime: String? = null,
+    @SerializedName("departure_delay_sec") val departureDelaySec: Int = 0,
+    @SerializedName("arrival_delay_sec") val arrivalDelaySec: Int = 0,
+    @SerializedName("is_delayed") val isDelayed: Boolean = false,
     @SerializedName("duration_sec") val durationSec: Int,
     @SerializedName("distance_km") val distanceKm: Double = 0.0,
 
@@ -108,6 +113,10 @@ data class IntermediateStop(
     @SerializedName("name") val name: String,
     @SerializedName("arrival_time") val arrivalTime: String,
     @SerializedName("departure_time") val departureTime: String,
+    @SerializedName("scheduled_arrival_time") val scheduledArrivalTime: String? = null,
+    @SerializedName("scheduled_departure_time") val scheduledDepartureTime: String? = null,
+    @SerializedName("delay_sec") val delaySec: Int = 0,
+    @SerializedName("is_delayed") val isDelayed: Boolean = false,
     @SerializedName("is_blocked") val isBlocked: Boolean = false,
     @SerializedName("lat") val lat: Double = 0.0,
     @SerializedName("lon") val lon: Double = 0.0

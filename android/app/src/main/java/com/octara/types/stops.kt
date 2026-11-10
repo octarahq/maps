@@ -72,5 +72,22 @@ data class Departure(
     val time: String? = "",
     val time_string: String? = "",
     val wait_minutes: Float = 0f,
-    val picto: String? = ""
+    val picto: String? = "",
+    val scheduled_dep_sec: Int = 0,
+    val scheduled_time: String? = null,
+    val scheduled_time_string: String? = null,
+    val delay_sec: Int = 0,
+    val delay_minutes: Int = 0,
+    val is_delayed: Boolean = false
+)
+
+data class FavoriteDepartureInfo(
+    val wait_sec: Int = 0,
+    val dep_sec: Int = 0,
+    val scheduled_dep_sec: Int = 0,
+    val delay_sec: Int = 0,
+    val delay_minutes: Int = 0,
+    val is_delayed: Boolean = false,
+    val time_string: String? = null,
+    val scheduled_time_string: String? = null
 )

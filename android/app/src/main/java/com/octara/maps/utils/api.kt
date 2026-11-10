@@ -8,6 +8,7 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.octara.maps.types.Accessibility
 import com.octara.maps.types.Departure
+import com.octara.maps.types.FavoriteDepartureInfo
 import com.octara.maps.types.JourneyQuery
 import com.octara.maps.types.JourneyResponse
 import com.octara.maps.types.LegType
@@ -168,11 +169,19 @@ class Api {
 
     suspend fun getNextDeparturesOfMultipleStops(list: List<Pair<String, String>>): Map<Pair<String, String>, Map<String, List<Int>>> =
         withContext(Dispatchers.IO) {
+            val details = getNextDepartureDetailsOfMultipleStops(list)
+            details.mapValues { (_, byHeadsign) ->
+                byHeadsign.mapValues { (_, items) -> items.map { it.wait_sec } }
+            }
+        }
+
+    suspend fun getNextDepartureDetailsOfMultipleStops(list: List<Pair<String, String>>): Map<Pair<String, String>, Map<String, List<FavoriteDepartureInfo>>> =
+        withContext(Dispatchers.IO) {
             if (list.isEmpty()) return@withContext emptyMap()
             try {
-                val url = "$BASE_URL/nextdepartures?stops=${list.joinToString(",") { "${it.first}:${it.second}" }}"
+                val url = "$BASE_URL/nextdepartures?details=true&stops=${list.joinToString(",") { "${it.first}:${it.second}" }}"
                 val response: Map<String, Map<String, List<Any>>> = fetchGET(url)
-                val result = mutableMapOf<Pair<String, String>, Map<String, List<Int>>>()
+                val result = mutableMapOf<Pair<String, String>, Map<String, List<FavoriteDepartureInfo>>>()
 
                 for ((key, deps) in response) {
                     val clean = key.removePrefix("stop_point:IDFM:").removePrefix("IDFM:")
@@ -180,11 +189,31 @@ class Api {
                     if (parts.size >= 2) {
                         val stopId = parts[0]
                         val routeId = parts[1]
-                        val sanitizedDeps = deps.mapValues { (_, times) ->
-                            times.mapNotNull { item ->
+                        val sanitizedDeps = deps.mapValues { (_, items) ->
+                            items.mapNotNull { item ->
                                 when (item) {
-                                    is Number -> item.toInt()
-                                    is String -> item.toIntOrNull()
+                                    is Number -> FavoriteDepartureInfo(wait_sec = item.toInt())
+                                    is String -> item.toIntOrNull()?.let { FavoriteDepartureInfo(wait_sec = it) }
+                                    is Map<*, *> -> {
+                                        val waitSec = (item["wait_sec"] as? Number)?.toInt() ?: 0
+                                        val depSec = (item["dep_sec"] as? Number)?.toInt() ?: 0
+                                        val schedDepSec = (item["scheduled_dep_sec"] as? Number)?.toInt() ?: 0
+                                        val delaySec = (item["delay_sec"] as? Number)?.toInt() ?: 0
+                                        val delayMin = (item["delay_minutes"] as? Number)?.toInt() ?: ((delaySec + 30) / 60).coerceAtLeast(0)
+                                        val isDelayed = (item["is_delayed"] as? Boolean) ?: (delaySec >= 60)
+                                        val timeStr = item["time_string"] as? String
+                                        val schedTimeStr = item["scheduled_time_string"] as? String
+                                        FavoriteDepartureInfo(
+                                            wait_sec = waitSec,
+                                            dep_sec = depSec,
+                                            scheduled_dep_sec = schedDepSec,
+                                            delay_sec = delaySec,
+                                            delay_minutes = delayMin,
+                                            is_delayed = isDelayed,
+                                            time_string = timeStr,
+                                            scheduled_time_string = schedTimeStr
+                                        )
+                                    }
                                     else -> null
                                 }
                             }
