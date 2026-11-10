@@ -62,6 +62,8 @@ import kotlin.math.asinh
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.tan
+import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.navigation.Screen
 
 private const val OSM_STYLE_JSON = """
 {
@@ -279,6 +281,7 @@ fun TransitMap(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val density = LocalDensity.current
+    val router = LocalRouter.current
 
     var mapInstance by remember { mutableStateOf<MapLibreMap?>(null) }
     var isMapReady by remember { mutableStateOf(false) }
@@ -727,6 +730,17 @@ fun TransitMap(
                     StopItemDisplay(
                         stop = stop,
                         withBG = true,
+                        onClick = {
+                            router.navigateTo(
+                                Screen.StopInfo(
+                                    stopId = stop.id,
+                                    lat = stop.lat.toDouble(),
+                                    lon = stop.lon.toDouble(),
+                                    name = stop.name
+                                ),
+                                popCurrent = true
+                            )
+                        },
                         modifier = Modifier.offset {
                             @Suppress("UNUSED_EXPRESSION")
                             cameraMoveTick
