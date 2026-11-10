@@ -395,3 +395,37 @@ func EnrichRoutesWithVehicles(routes []types.Route) {
 		routes[i].VehicleImage, routes[i].VehicleCarriage = resolveVehicleForRoute(&routes[i])
 	}
 }
+
+func EnrichTripsHeadsignWithTerminus(net *types.Network) {
+	if len(net.Trips) == 0 || len(net.StopTimes) == 0 {
+		return
+	}
+
+	type tripLast struct {
+		maxSeq uint16
+		sid    string
+	}
+	lastStops := make(map[string]tripLast, len(net.Trips))
+	for _, st := range net.StopTimes {
+		cur, ok := lastStops[st.TID]
+		if !ok || st.Seq >= cur.maxSeq {
+			lastStops[st.TID] = tripLast{maxSeq: st.Seq, sid: st.SId}
+		}
+	}
+
+	stopsByID := IndexStopsByID(net.Stops)
+
+	for i := range net.Trips {
+		t := &net.Trips[i]
+		ls, ok := lastStops[t.TID]
+		if !ok {
+			cleanTID := IdRemoveIDFMPrefix(t.TID)
+			ls, ok = lastStops[cleanTID]
+		}
+		if ok {
+			if stop, sOk := stopsByID[ls.sid]; sOk && stop.Name != "" {
+				t.Headsign = stop.Name
+			}
+		}
+	}
+}

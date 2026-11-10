@@ -203,6 +203,7 @@ func buildNetWork(path string) io.Reader {
 		}
 
 		utils.EnrichParentsStations(&net)
+		utils.EnrichTripsHeadsignWithTerminus(&net)
 
 		enc := gob.NewEncoder(pw)
 		if err := enc.Encode(net); err != nil {
