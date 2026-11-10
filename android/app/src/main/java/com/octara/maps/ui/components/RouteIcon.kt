@@ -12,10 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AirlineSeatFlatAngled
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -23,6 +20,8 @@ import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,19 +29,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.decode.SvgDecoder
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.octara.maps.types.Departure
 import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
-import com.octara.maps.types.Departure
 
 fun getRoutePictoResourceUrl(pictoId: String): String {
     return "https://data.iledefrance-mobilites.fr/explore/dataset/referentiel-des-lignes/files/$pictoId/download/"
@@ -91,17 +93,23 @@ fun RouteBadgeFallback(
 
     val displayName = route.name.ifEmpty { (route.short_name ?: "").ifEmpty { route.id ?: "" } }
 
-    val cornerRadius = (height * 0.2f).coerceAtLeast(3.dp)
+    val cornerRadius = (height * 0.22f).coerceAtLeast(3.dp)
     val fontSize = when {
-        displayName.length > 3 -> (height.value * 0.38f).sp
-        displayName.length > 2 -> (height.value * 0.44f).sp
-        else -> (height.value * 0.52f).sp
+        displayName.length >= 4 -> (height.value * 0.42f).sp
+        displayName.length == 3 -> (height.value * 0.48f).sp
+        displayName.length == 2 -> (height.value * 0.54f).sp
+        else -> (height.value * 0.60f).sp
     }
+    val tightTextStyle = TextStyle(
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeight = fontSize
+    )
 
     when (route.type) {
         RouteType.METRO -> {
             Box(
                 modifier = modifier
+                    .height(height)
                     .defaultMinSize(minWidth = height)
                     .clip(CircleShape)
                     .background(bgColor)
@@ -113,6 +121,7 @@ fun RouteBadgeFallback(
                     color = textColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = fontSize,
+                    style = tightTextStyle,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center
@@ -123,6 +132,7 @@ fun RouteBadgeFallback(
         RouteType.TRAIN -> {
             Box(
                 modifier = modifier
+                    .height(height)
                     .defaultMinSize(minWidth = height)
                     .clip(RoundedCornerShape(cornerRadius))
                     .background(bgColor)
@@ -134,6 +144,7 @@ fun RouteBadgeFallback(
                     color = textColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = fontSize,
+                    style = tightTextStyle,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center
@@ -154,15 +165,16 @@ fun RouteBadgeFallback(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.5.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
                         .background(bgColor)
                 )
                 Text(
                     text = displayName,
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (displayName.length > 3) 9.sp else 11.sp,
+                    fontSize = fontSize,
+                    style = tightTextStyle,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
@@ -171,8 +183,8 @@ fun RouteBadgeFallback(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.5.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
                         .background(bgColor)
                 )
             }
@@ -188,21 +200,17 @@ fun RouteBadgeFallback(
                     .height(height)
                     .defaultMinSize(minWidth = height)
                     .wrapContentWidth(unbounded = true)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(cornerRadius))
                     .background(bgColor)
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = (height * 0.22f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = displayName,
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = when {
-                        displayName.length >= 5 -> 9.sp
-                        displayName.length >= 4 -> 10.sp
-                        displayName.length >= 3 -> 11.sp
-                        else -> 12.sp
-                    },
+                    fontSize = fontSize,
+                    style = tightTextStyle,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center
@@ -215,7 +223,8 @@ fun RouteBadgeFallback(
 @Composable
 fun RouteIcon(
     route: Route,
-    modifier: Modifier = Modifier.height(24.dp)
+    modifier: Modifier = Modifier.height(24.dp),
+    height: Dp = 24.dp
 ) {
     val picto = route.picto ?: ""
     if (picto.isNotBlank()) {
@@ -223,6 +232,7 @@ fun RouteIcon(
         val painter = rememberAsyncImagePainter(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(pictoUrl)
+                .decoderFactory(SvgDecoder.Factory())
                 .memoryCacheKey(pictoUrl)
                 .diskCacheKey(pictoUrl)
                 .memoryCachePolicy(CachePolicy.ENABLED)
@@ -232,17 +242,19 @@ fun RouteIcon(
         val state = painter.state
 
         if (state is AsyncImagePainter.State.Error) {
-            RouteBadgeFallback(route = route, modifier = modifier)
+            RouteBadgeFallback(route = route, modifier = modifier, height = height)
         } else {
             Image(
                 painter = painter,
                 contentDescription = "${route.short_name ?: ""} picto",
-                modifier = modifier.wrapContentWidth(),
+                modifier = modifier
+                    .height(height)
+                    .wrapContentWidth(),
                 contentScale = ContentScale.Fit
             )
         }
     } else {
-        RouteBadgeFallback(route = route, modifier = modifier)
+        RouteBadgeFallback(route = route, modifier = modifier, height = height)
     }
 }
 

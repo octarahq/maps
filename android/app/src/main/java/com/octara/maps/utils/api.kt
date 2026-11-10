@@ -120,10 +120,10 @@ class Api {
                 throw IllegalStateException("GET $url failed ($responseCode): $errText")
             }
 
-            val json = connection.inputStream.bufferedReader().use { it.readText() }
             val type = object : com.google.gson.reflect.TypeToken<T>() {}.type
-            val result = gson.fromJson<T>(json, type)
-                ?: throw IllegalStateException("json is null")
+            val result = connection.inputStream.bufferedReader().use { reader ->
+                gson.fromJson<T>(reader, type)
+            } ?: throw IllegalStateException("json is null")
             android.util.Log.d("OctaraApi", "Parsed successfully: ${result?.javaClass?.simpleName}")
             result
         } catch (e: Exception) {
@@ -282,6 +282,16 @@ class Api {
 
         val url = "$BASE_URL/transit/journey?$queryString"
         fetchGET<JourneyResponse>(url)
+    }
+
+    suspend fun getLayerStops(x: Int, y: Int, z: Int): com.octara.maps.types.LayerStopsResponse {
+        val url = "$BASE_URL/layers/stops/$x/$y/$z"
+        return fetchGET<com.octara.maps.types.LayerStopsResponse>(url)
+    }
+
+    suspend fun getLayerRoutesLines(x: Int, y: Int, z: Int): com.octara.maps.types.LayerRoutesLinesResponse {
+        val url = "$BASE_URL/layers/routesLines/$x/$y/$z"
+        return fetchGET<com.octara.maps.types.LayerRoutesLinesResponse>(url)
     }
 
     suspend fun getJourney(
