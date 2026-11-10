@@ -24,6 +24,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	targetTime := config.TargetTime
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
@@ -364,13 +365,13 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 							continue
 						}
 
-						sched, okTrip := utils.FindTripDeparture(edge.Schedules, current.TripIndex, currTime, activeServices)
+						rtSched, okTrip := e.FindTripDepartureRealtime(&edge, current.TripIndex, currTime, activeServices, delays)
 						if !okTrip {
 							continue
 						}
 
-						waitTime := int(sched.Dep - currTime)
-						rideTime := int(sched.Arr - sched.Dep)
+						waitTime := int(rtSched.RealDep - currTime)
+						rideTime := int(rtSched.RealArr - rtSched.RealDep)
 						edgeCost := int(float64(rideTime)*0.7) + waitTime
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
@@ -383,15 +384,19 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 						if !exists || tentativeCost < best.cost {
 							edgeCopy := edge
 							edgeCopy.TripIndex = current.TripIndex
-							edgeCopy.DepTime = sched.Dep
-							edgeCopy.ArrTime = sched.Arr
-							edgeCopy.Weight = int(sched.Arr - sched.Dep)
+							edgeCopy.DepTime = rtSched.RealDep
+							edgeCopy.ArrTime = rtSched.RealArr
+							edgeCopy.SchedDepTime = rtSched.Sched.Dep
+							edgeCopy.SchedArrTime = rtSched.Sched.Arr
+							edgeCopy.DepDelaySec = rtSched.DepDelaySec
+							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
 							}
 
 							visited[nextKey] = routeNode{
-								time:     sched.Arr,
+								time:     rtSched.RealArr,
 								cost:     tentativeCost,
 								prevEdge: edgeCopy,
 								prevKey:  currKey,
@@ -495,11 +500,11 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 							if current.HasTransited {
 								earliestDep = currTime + 120
 							}
-							scheds := utils.FindNextDepartures(edge.Schedules, earliestDep, 3, 1800, activeServices)
-							for _, sched := range scheds {
-								nextTime := sched.Arr
-								waitTime := int(sched.Dep - currTime)
-								rideTime := int(sched.Arr - sched.Dep)
+							rtScheds := e.FindNextDeparturesRealtime(&edge, earliestDep, 3, 1800, activeServices, delays)
+							for _, rtSched := range rtScheds {
+								nextTime := rtSched.RealArr
+								waitTime := int(rtSched.RealDep - currTime)
+								rideTime := int(rtSched.RealArr - rtSched.RealDep)
 								edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
 								if current.HasTransited {
 									edgeCost += transferPenalty
@@ -507,19 +512,26 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 								if ad.IsEdgePerturbed(&edge) {
 									edgeCost += int(float64(rideTime)*0.3) + 60
 								}
+								if rtSched.DepDelaySec >= 120 {
+									edgeCost += int(float64(rtSched.DepDelaySec) * 0.15)
+								}
 
 								tentativeCost := currCost + edgeCost
-								nextKey := stateKey{SID: edge.ToSID, TripIndex: sched.TripIndex, HasTransited: true}
+								nextKey := stateKey{SID: edge.ToSID, TripIndex: rtSched.Sched.TripIndex, HasTransited: true}
 
 								best, exists := visited[nextKey]
 								if !exists || tentativeCost < best.cost {
 									edgeCopy := edge
-									edgeCopy.TripIndex = sched.TripIndex
-									edgeCopy.DepTime = sched.Dep
-									edgeCopy.ArrTime = sched.Arr
-									edgeCopy.Weight = int(sched.Arr - sched.Dep)
-									if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
-										edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+									edgeCopy.TripIndex = rtSched.Sched.TripIndex
+									edgeCopy.DepTime = rtSched.RealDep
+									edgeCopy.ArrTime = rtSched.RealArr
+									edgeCopy.SchedDepTime = rtSched.Sched.Dep
+									edgeCopy.SchedArrTime = rtSched.Sched.Arr
+									edgeCopy.DepDelaySec = rtSched.DepDelaySec
+									edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+									edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
+									if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
+										edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
 									}
 
 									visited[nextKey] = routeNode{
@@ -531,7 +543,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 									}
 									queue.Push(queueNode{
 										SID:          edge.ToSID,
-										TripIndex:    sched.TripIndex,
+										TripIndex:    rtSched.Sched.TripIndex,
 										HasTransited: true,
 										Priority:     tentativeCost,
 									}, tentativeCost)
@@ -641,6 +653,7 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 	targetTime := route.Config.TargetTime
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {
 		return nil, fmt.Errorf("station is blocked")
 	}
@@ -700,13 +713,13 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 					continue
 				}
 
-				sched, okTrip := utils.FindTripDeparture(edge.Schedules, current.TripIndex, currTime, activeServices)
+				rtSched, okTrip := e.FindTripDepartureRealtime(&edge, current.TripIndex, currTime, activeServices, delays)
 				if !okTrip {
 					continue
 				}
 
-				waitTime := int(sched.Dep - currTime)
-				rideTime := int(sched.Arr - sched.Dep)
+				waitTime := int(rtSched.RealDep - currTime)
+				rideTime := int(rtSched.RealArr - rtSched.RealDep)
 				edgeCost := int(float64(rideTime)*0.7) + waitTime
 				if ad.IsEdgePerturbed(&edge) {
 					edgeCost += int(float64(rideTime)*0.3) + 60
@@ -719,15 +732,19 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 				if !exists || tentativeCost < best.cost {
 					edgeCopy := edge
 					edgeCopy.TripIndex = current.TripIndex
-					edgeCopy.DepTime = sched.Dep
-					edgeCopy.ArrTime = sched.Arr
-					edgeCopy.Weight = int(sched.Arr - sched.Dep)
+					edgeCopy.DepTime = rtSched.RealDep
+					edgeCopy.ArrTime = rtSched.RealArr
+					edgeCopy.SchedDepTime = rtSched.Sched.Dep
+					edgeCopy.SchedArrTime = rtSched.Sched.Arr
+					edgeCopy.DepDelaySec = rtSched.DepDelaySec
+					edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+					edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
 					}
 
 					visited[nextKey] = routeNode{
-						time:     sched.Arr,
+						time:     rtSched.RealArr,
 						cost:     tentativeCost,
 						prevEdge: edgeCopy,
 						prevKey:  currKey,
@@ -803,11 +820,11 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 					if current.HasTransited {
 						earliestDep = currTime + 120
 					}
-					scheds := utils.FindNextDepartures(edge.Schedules, earliestDep, 3, 1800, activeServices)
-					for _, sched := range scheds {
-						nextTime := sched.Arr
-						waitTime := int(sched.Dep - currTime)
-						rideTime := int(sched.Arr - sched.Dep)
+					rtScheds := e.FindNextDeparturesRealtime(&edge, earliestDep, 3, 1800, activeServices, delays)
+					for _, rtSched := range rtScheds {
+						nextTime := rtSched.RealArr
+						waitTime := int(rtSched.RealDep - currTime)
+						rideTime := int(rtSched.RealArr - rtSched.RealDep)
 						edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
 						if current.HasTransited {
 							edgeCost += transferPenalty
@@ -815,19 +832,26 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
+						if rtSched.DepDelaySec >= 120 {
+							edgeCost += int(float64(rtSched.DepDelaySec) * 0.15)
+						}
 
 						tentativeCost := currCost + edgeCost
-						nextKey := stateKey{SID: edge.ToSID, TripIndex: sched.TripIndex, HasTransited: true}
+						nextKey := stateKey{SID: edge.ToSID, TripIndex: rtSched.Sched.TripIndex, HasTransited: true}
 
 						best, exists := visited[nextKey]
 						if !exists || tentativeCost < best.cost {
 							edgeCopy := edge
-							edgeCopy.TripIndex = sched.TripIndex
-							edgeCopy.DepTime = sched.Dep
-							edgeCopy.ArrTime = sched.Arr
-							edgeCopy.Weight = int(sched.Arr - sched.Dep)
-							if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
-								edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+							edgeCopy.TripIndex = rtSched.Sched.TripIndex
+							edgeCopy.DepTime = rtSched.RealDep
+							edgeCopy.ArrTime = rtSched.RealArr
+							edgeCopy.SchedDepTime = rtSched.Sched.Dep
+							edgeCopy.SchedArrTime = rtSched.Sched.Arr
+							edgeCopy.DepDelaySec = rtSched.DepDelaySec
+							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
+							if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
+								edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
 							}
 
 							visited[nextKey] = routeNode{
@@ -839,7 +863,7 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 							}
 							queue.Push(queueNode{
 								SID:          edge.ToSID,
-								TripIndex:    sched.TripIndex,
+								TripIndex:    rtSched.Sched.TripIndex,
 								HasTransited: true,
 								Priority:     tentativeCost,
 							}, tentativeCost)
@@ -881,6 +905,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 	targetTime := config.TargetTime
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 
 	var routesToCalculate = []types.RoutesToCalculateType{
 		{
@@ -1228,13 +1253,13 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 							continue
 						}
 
-						sched, okTrip := utils.FindTripArrival(edge.Schedules, current.TripIndex, currTime, activeServices)
+						rtSched, okTrip := e.FindTripArrivalRealtime(&edge, current.TripIndex, currTime, activeServices, delays)
 						if !okTrip {
 							continue
 						}
 
-						waitTime := int(currTime - sched.Arr)
-						rideTime := int(sched.Arr - sched.Dep)
+						waitTime := int(currTime - rtSched.RealArr)
+						rideTime := int(rtSched.RealArr - rtSched.RealDep)
 						edgeCost := int(float64(rideTime)*0.7) + waitTime
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
@@ -1247,15 +1272,19 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 						if !exists || tentativeCost < best.cost {
 							edgeCopy := edge
 							edgeCopy.TripIndex = current.TripIndex
-							edgeCopy.DepTime = sched.Dep
-							edgeCopy.ArrTime = sched.Arr
-							edgeCopy.Weight = int(sched.Arr - sched.Dep)
+							edgeCopy.DepTime = rtSched.RealDep
+							edgeCopy.ArrTime = rtSched.RealArr
+							edgeCopy.SchedDepTime = rtSched.Sched.Dep
+							edgeCopy.SchedArrTime = rtSched.Sched.Arr
+							edgeCopy.DepDelaySec = rtSched.DepDelaySec
+							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
 							}
 
 							visited[nextKey] = routeNode{
-								time:     sched.Dep,
+								time:     rtSched.RealDep,
 								cost:     tentativeCost,
 								prevEdge: edgeCopy,
 								prevKey:  currKey,
@@ -1370,11 +1399,11 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 								latestArr = currTime - 120
 							}
 
-							scheds := utils.FindPrevDepartures(edge.Schedules, latestArr, 3, 1800, activeServices)
-							for _, sched := range scheds {
-								prevTime := sched.Dep
-								waitTime := int(currTime - sched.Arr)
-								rideTime := int(sched.Arr - sched.Dep)
+							rtScheds := e.FindPrevDeparturesRealtime(&edge, latestArr, 3, 1800, activeServices, delays)
+							for _, rtSched := range rtScheds {
+								prevTime := rtSched.RealDep
+								waitTime := int(currTime - rtSched.RealArr)
+								rideTime := int(rtSched.RealArr - rtSched.RealDep)
 								edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
 								if current.HasTransited {
 									edgeCost += transferPenalty
@@ -1382,19 +1411,26 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 								if ad.IsEdgePerturbed(&edge) {
 									edgeCost += int(float64(rideTime)*0.3) + 60
 								}
+								if rtSched.ArrDelaySec >= 120 {
+									edgeCost += int(float64(rtSched.ArrDelaySec) * 0.15)
+								}
 
 								tentativeCost := currCost + edgeCost
-								nextKey := stateKey{SID: edge.FromSID, TripIndex: sched.TripIndex, HasTransited: true}
+								nextKey := stateKey{SID: edge.FromSID, TripIndex: rtSched.Sched.TripIndex, HasTransited: true}
 
 								best, exists := visited[nextKey]
 								if !exists || tentativeCost < best.cost {
 									edgeCopy := edge
-									edgeCopy.TripIndex = sched.TripIndex
-									edgeCopy.DepTime = sched.Dep
-									edgeCopy.ArrTime = sched.Arr
-									edgeCopy.Weight = int(sched.Arr - sched.Dep)
-									if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
-										edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+									edgeCopy.TripIndex = rtSched.Sched.TripIndex
+									edgeCopy.DepTime = rtSched.RealDep
+									edgeCopy.ArrTime = rtSched.RealArr
+									edgeCopy.SchedDepTime = rtSched.Sched.Dep
+									edgeCopy.SchedArrTime = rtSched.Sched.Arr
+									edgeCopy.DepDelaySec = rtSched.DepDelaySec
+									edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+									edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
+									if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
+										edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
 									}
 
 									visited[nextKey] = routeNode{
@@ -1406,7 +1442,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 									}
 									queue.Push(queueNode{
 										SID:          edge.FromSID,
-										TripIndex:    sched.TripIndex,
+										TripIndex:    rtSched.Sched.TripIndex,
 										HasTransited: true,
 										Priority:     tentativeCost,
 									}, tentativeCost)
@@ -1494,6 +1530,7 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 	targetTime := route.Config.TargetTime
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 	if ad.IsStopBlocked(fromSID) || ad.IsStopBlocked(toSID) {
 		return nil, fmt.Errorf("station is blocked")
 	}
@@ -1551,13 +1588,13 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 					continue
 				}
 
-				sched, okTrip := utils.FindTripArrival(edge.Schedules, current.TripIndex, currTime, activeServices)
+				rtSched, okTrip := e.FindTripArrivalRealtime(&edge, current.TripIndex, currTime, activeServices, delays)
 				if !okTrip {
 					continue
 				}
 
-				waitTime := int(currTime - sched.Arr)
-				rideTime := int(sched.Arr - sched.Dep)
+				waitTime := int(currTime - rtSched.RealArr)
+				rideTime := int(rtSched.RealArr - rtSched.RealDep)
 				edgeCost := int(float64(rideTime)*0.7) + waitTime
 				if ad.IsEdgePerturbed(&edge) {
 					edgeCost += int(float64(rideTime)*0.3) + 60
@@ -1570,15 +1607,19 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 				if !exists || tentativeCost < best.cost {
 					edgeCopy := edge
 					edgeCopy.TripIndex = current.TripIndex
-					edgeCopy.DepTime = sched.Dep
-					edgeCopy.ArrTime = sched.Arr
-					edgeCopy.Weight = int(sched.Arr - sched.Dep)
+					edgeCopy.DepTime = rtSched.RealDep
+					edgeCopy.ArrTime = rtSched.RealArr
+					edgeCopy.SchedDepTime = rtSched.Sched.Dep
+					edgeCopy.SchedArrTime = rtSched.Sched.Arr
+					edgeCopy.DepDelaySec = rtSched.DepDelaySec
+					edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+					edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
 					}
 
 					visited[nextKey] = routeNode{
-						time:     sched.Dep,
+						time:     rtSched.RealDep,
 						cost:     tentativeCost,
 						prevEdge: edgeCopy,
 						prevKey:  currKey,
@@ -1661,11 +1702,11 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 						latestArr = currTime - 120
 					}
 
-					scheds := utils.FindPrevDepartures(edge.Schedules, latestArr, 3, 1800, activeServices)
-					for _, sched := range scheds {
-						prevTime := sched.Dep
-						waitTime := int(currTime - sched.Arr)
-						rideTime := int(sched.Arr - sched.Dep)
+					rtScheds := e.FindPrevDeparturesRealtime(&edge, latestArr, 3, 1800, activeServices, delays)
+					for _, rtSched := range rtScheds {
+						prevTime := rtSched.RealDep
+						waitTime := int(currTime - rtSched.RealArr)
+						rideTime := int(rtSched.RealArr - rtSched.RealDep)
 						edgeCost := rideTime + int(float64(waitTime)*waitMultiplier)
 						if current.HasTransited {
 							edgeCost += transferPenalty
@@ -1673,19 +1714,26 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 						if ad.IsEdgePerturbed(&edge) {
 							edgeCost += int(float64(rideTime)*0.3) + 60
 						}
+						if rtSched.ArrDelaySec >= 120 {
+							edgeCost += int(float64(rtSched.ArrDelaySec) * 0.15)
+						}
 
 						tentativeCost := currCost + edgeCost
-						nextKey := stateKey{SID: edge.FromSID, TripIndex: sched.TripIndex, HasTransited: true}
+						nextKey := stateKey{SID: edge.FromSID, TripIndex: rtSched.Sched.TripIndex, HasTransited: true}
 
 						best, exists := visited[nextKey]
 						if !exists || tentativeCost < best.cost {
 							edgeCopy := edge
-							edgeCopy.TripIndex = sched.TripIndex
-							edgeCopy.DepTime = sched.Dep
-							edgeCopy.ArrTime = sched.Arr
-							edgeCopy.Weight = int(sched.Arr - sched.Dep)
-							if sched.TripIndex > 0 && int(sched.TripIndex)-1 < len(e.Net.Trips) {
-								edgeCopy.Headsign = e.Net.Trips[sched.TripIndex-1].Headsign
+							edgeCopy.TripIndex = rtSched.Sched.TripIndex
+							edgeCopy.DepTime = rtSched.RealDep
+							edgeCopy.ArrTime = rtSched.RealArr
+							edgeCopy.SchedDepTime = rtSched.Sched.Dep
+							edgeCopy.SchedArrTime = rtSched.Sched.Arr
+							edgeCopy.DepDelaySec = rtSched.DepDelaySec
+							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
+							if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
+								edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
 							}
 
 							visited[nextKey] = routeNode{
@@ -1697,7 +1745,7 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 							}
 							queue.Push(queueNode{
 								SID:          edge.FromSID,
-								TripIndex:    sched.TripIndex,
+								TripIndex:    rtSched.Sched.TripIndex,
 								HasTransited: true,
 								Priority:     tentativeCost,
 							}, tentativeCost)

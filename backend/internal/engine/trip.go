@@ -60,6 +60,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 ) *types.ParsedTrip {
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 	startSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currentSec := startSec
 
@@ -137,6 +138,9 @@ func (e *Engine) edgesToParsedTripDeparture(
 	}
 
 	var currentLeg *types.TripLeg
+	var currentSchedArrSec uint32
+	var currentArrDelaySec int
+
 	for _, edge := range edges {
 		legType := types.LegTypeTransit
 		if edge.RID == "" {
@@ -151,6 +155,16 @@ func (e *Engine) edgesToParsedTripDeparture(
 			if currentLeg != nil {
 				currentLeg.ArrivalTime = baseDate.Add(time.Duration(currentSec) * time.Second)
 				currentLeg.DurationSec = int(currentLeg.ArrivalTime.Sub(currentLeg.DepartureTime).Seconds())
+				if currentLeg.Type == types.LegTypeTransit {
+					if currentSchedArrSec > 0 {
+						sArr := baseDate.Add(time.Duration(currentSchedArrSec) * time.Second)
+						currentLeg.ScheduledArrivalTime = &sArr
+					}
+					currentLeg.ArrivalDelaySec = currentArrDelaySec
+					if currentLeg.DepartureDelaySec >= 60 || currentLeg.ArrivalDelaySec >= 60 {
+						currentLeg.IsDelayed = true
+					}
+				}
 				trip.Legs = append(trip.Legs, *currentLeg)
 
 				if legType == types.LegTypeTransit {
@@ -203,6 +217,9 @@ func (e *Engine) edgesToParsedTripDeparture(
 				IntermediateStops: make([]types.IntermediateStop, 0),
 			}
 
+			currentSchedArrSec = 0
+			currentArrDelaySec = 0
+
 			if legType == types.LegTypeTransit {
 				route := routes[edge.RID]
 
@@ -225,12 +242,35 @@ func (e *Engine) edgesToParsedTripDeparture(
 
 				if edge.DepTime > 0 && edge.ArrTime > 0 {
 					leg.DepartureTime = baseDate.Add(time.Duration(edge.DepTime) * time.Second)
+					schedDep := edge.SchedDepTime
+					if schedDep == 0 {
+						schedDep = edge.DepTime
+					}
+					sDep := baseDate.Add(time.Duration(schedDep) * time.Second)
+					leg.ScheduledDepartureTime = &sDep
+					leg.DepartureDelaySec = edge.DepDelaySec
+					if edge.DepDelaySec >= 60 || edge.ArrDelaySec >= 60 {
+						leg.IsDelayed = true
+					}
+					currentSchedArrSec = edge.SchedArrTime
+					if currentSchedArrSec == 0 {
+						currentSchedArrSec = edge.ArrTime
+					}
+					currentArrDelaySec = edge.ArrDelaySec
 					currentSec = edge.ArrTime
 				} else {
-					sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec, activeServices)
+					rtSched, ok := e.FindNextDepartureRealtime(&edge, currentSec, activeServices, delays)
 					if ok {
-						leg.DepartureTime = baseDate.Add(time.Duration(sched.Dep) * time.Second)
-						currentSec = sched.Arr
+						leg.DepartureTime = baseDate.Add(time.Duration(rtSched.RealDep) * time.Second)
+						sDep := baseDate.Add(time.Duration(rtSched.Sched.Dep) * time.Second)
+						leg.ScheduledDepartureTime = &sDep
+						leg.DepartureDelaySec = rtSched.DepDelaySec
+						if rtSched.DepDelaySec >= 60 || rtSched.ArrDelaySec >= 60 {
+							leg.IsDelayed = true
+						}
+						currentSchedArrSec = rtSched.Sched.Arr
+						currentArrDelaySec = rtSched.ArrDelaySec
+						currentSec = rtSched.RealArr
 					} else {
 						leg.DepartureTime = baseDate.Add(time.Duration(currentSec) * time.Second)
 						currentSec += uint32(edge.Weight)
@@ -249,23 +289,53 @@ func (e *Engine) edgesToParsedTripDeparture(
 			if edge.DepTime > 0 {
 				arrTime = edge.DepTime
 			}
+			schedStopSec := edge.SchedDepTime
+			if schedStopSec == 0 {
+				schedStopSec = currentSchedArrSec
+			}
+			if schedStopSec == 0 {
+				schedStopSec = arrTime
+			}
+			stopDelay := edge.DepDelaySec
+			if stopDelay == 0 {
+				stopDelay = currentArrDelaySec
+			}
+			sStopTime := baseDate.Add(time.Duration(schedStopSec) * time.Second)
+
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
-				SID:           utils.IdRemoveIDFMPrefix(intermediateStop.SID),
-				Name:          intermediateStop.Name,
-				ArrivalTime:   baseDate.Add(time.Duration(arrTime) * time.Second),
-				DepartureTime: baseDate.Add(time.Duration(arrTime) * time.Second),
-				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
-				Lat:           intermediateStop.Lat,
-				Lon:           intermediateStop.Long,
+				SID:                    utils.IdRemoveIDFMPrefix(intermediateStop.SID),
+				Name:                   intermediateStop.Name,
+				ArrivalTime:            baseDate.Add(time.Duration(arrTime) * time.Second),
+				DepartureTime:          baseDate.Add(time.Duration(arrTime) * time.Second),
+				ScheduledArrivalTime:   &sStopTime,
+				ScheduledDepartureTime: &sStopTime,
+				DelaySec:               stopDelay,
+				IsDelayed:              stopDelay >= 60,
+				IsBlocked:              ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
+				Lat:                    intermediateStop.Lat,
+				Lon:                    intermediateStop.Long,
 			})
 			currentLeg.ToSID = utils.IdRemoveIDFMPrefix(edge.ToSID)
 
 			if edge.ArrTime > 0 {
 				currentSec = edge.ArrTime
+				currentSchedArrSec = edge.SchedArrTime
+				if currentSchedArrSec == 0 {
+					currentSchedArrSec = edge.ArrTime
+				}
+				currentArrDelaySec = edge.ArrDelaySec
+				if edge.DepDelaySec >= 60 || edge.ArrDelaySec >= 60 {
+					currentLeg.IsDelayed = true
+				}
 			} else if edge.RID != "" {
-				sched, ok := utils.FindNextDeparture(edge.Schedules, currentSec, activeServices)
+				rtSched, ok := e.FindNextDepartureRealtime(&edge, currentSec, activeServices, delays)
 				if ok {
-					currentSec = sched.Arr
+					currentSec = rtSched.RealArr
+					currentSchedArrSec = rtSched.Sched.Arr
+					currentArrDelaySec = rtSched.ArrDelaySec
+					if rtSched.DepDelaySec >= 60 || rtSched.ArrDelaySec >= 60 {
+						currentLeg.IsDelayed = true
+					}
 				} else {
 					currentSec += uint32(edge.Weight)
 				}
@@ -298,6 +368,16 @@ func (e *Engine) edgesToParsedTripDeparture(
 	if currentLeg != nil {
 		currentLeg.ArrivalTime = baseDate.Add(time.Duration(currentSec) * time.Second)
 		currentLeg.DurationSec = int(currentLeg.ArrivalTime.Sub(currentLeg.DepartureTime).Seconds())
+		if currentLeg.Type == types.LegTypeTransit {
+			if currentSchedArrSec > 0 {
+				sArr := baseDate.Add(time.Duration(currentSchedArrSec) * time.Second)
+				currentLeg.ScheduledArrivalTime = &sArr
+			}
+			currentLeg.ArrivalDelaySec = currentArrDelaySec
+			if currentLeg.DepartureDelaySec >= 60 || currentLeg.ArrivalDelaySec >= 60 {
+				currentLeg.IsDelayed = true
+			}
+		}
 		trip.Legs = append(trip.Legs, *currentLeg)
 	}
 
@@ -370,12 +450,17 @@ func (e *Engine) edgesToParsedTripArrival(
 ) *types.ParsedTrip {
 	activeServices := e.GetActiveServices(targetTime)
 	ad := e.GetActiveDisruptions(targetTime)
+	delays := e.GetActiveDelays(targetTime)
 	targetArrSec := uint32(targetTime.Hour()*3600 + targetTime.Minute()*60 + targetTime.Second())
 	currSec := targetArrSec
 
 	n := len(edges)
 	edgeDep := make([]uint32, n)
 	edgeArr := make([]uint32, n)
+	edgeSchedDep := make([]uint32, n)
+	edgeSchedArr := make([]uint32, n)
+	edgeDepDelay := make([]int, n)
+	edgeArrDelay := make([]int, n)
 
 	var destWalkSec uint32
 	var distArr float64
@@ -402,13 +487,28 @@ func (e *Engine) edgesToParsedTripArrival(
 		} else if edge.DepTime > 0 && edge.ArrTime > 0 {
 			edgeArr[i] = edge.ArrTime
 			edgeDep[i] = edge.DepTime
+			edgeSchedDep[i] = edge.SchedDepTime
+			if edgeSchedDep[i] == 0 {
+				edgeSchedDep[i] = edge.DepTime
+			}
+			edgeSchedArr[i] = edge.SchedArrTime
+			if edgeSchedArr[i] == 0 {
+				edgeSchedArr[i] = edge.ArrTime
+			}
+			edgeDepDelay[i] = edge.DepDelaySec
+			edgeArrDelay[i] = edge.ArrDelaySec
 			currSec = edge.DepTime
 		} else {
-			depTime, arrTime, ok := utils.FindPrevDepartureWithArr(edge.Schedules, currSec, activeServices)
-			if ok {
-				edgeArr[i] = arrTime
-				edgeDep[i] = depTime
-				currSec = depTime
+			prevScheds := e.FindPrevDeparturesRealtime(&edge, currSec, 1, 6*3600, activeServices, delays)
+			if len(prevScheds) > 0 {
+				rs := prevScheds[0]
+				edgeArr[i] = rs.RealArr
+				edgeDep[i] = rs.RealDep
+				edgeSchedDep[i] = rs.Sched.Dep
+				edgeSchedArr[i] = rs.Sched.Arr
+				edgeDepDelay[i] = rs.DepDelaySec
+				edgeArrDelay[i] = rs.ArrDelaySec
+				currSec = rs.RealDep
 			} else {
 				edgeArr[i] = currSec
 				w := uint32(edge.Weight)
@@ -416,6 +516,8 @@ func (e *Engine) edgesToParsedTripArrival(
 					currSec -= w
 				}
 				edgeDep[i] = currSec
+				edgeSchedDep[i] = edgeDep[i]
+				edgeSchedArr[i] = edgeArr[i]
 			}
 		}
 
@@ -601,6 +703,15 @@ func (e *Engine) edgesToParsedTripArrival(
 				if hasPos {
 					leg.PositionInTrain = utils.TripParsePositionInTrain(tPos)
 				}
+				sDep := baseDate.Add(time.Duration(edgeSchedDep[i]) * time.Second)
+				sArr := baseDate.Add(time.Duration(edgeSchedArr[i]) * time.Second)
+				leg.ScheduledDepartureTime = &sDep
+				leg.ScheduledArrivalTime = &sArr
+				leg.DepartureDelaySec = edgeDepDelay[i]
+				leg.ArrivalDelaySec = edgeArrDelay[i]
+				if edgeDepDelay[i] >= 60 || edgeArrDelay[i] >= 60 {
+					leg.IsDelayed = true
+				}
 			} else {
 				walkingDuration += edge.Weight
 			}
@@ -608,18 +719,31 @@ func (e *Engine) edgesToParsedTripArrival(
 			currentLeg = &leg
 		} else {
 			intermediateStop := e.getStopFromIndex(edge.FromSID, stops)
+			sStopTime := baseDate.Add(time.Duration(edgeSchedDep[i]) * time.Second)
 			currentLeg.IntermediateStops = append(currentLeg.IntermediateStops, types.IntermediateStop{
-				SID:           utils.IdRemoveIDFMPrefix(intermediateStop.SID),
-				Name:          intermediateStop.Name,
-				ArrivalTime:   baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
-				DepartureTime: baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
-				IsBlocked:     ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
-				Lat:           intermediateStop.Lat,
-				Lon:           intermediateStop.Long,
+				SID:                    utils.IdRemoveIDFMPrefix(intermediateStop.SID),
+				Name:                   intermediateStop.Name,
+				ArrivalTime:            baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
+				DepartureTime:          baseDate.Add(time.Duration(edgeDep[i]) * time.Second),
+				ScheduledArrivalTime:   &sStopTime,
+				ScheduledDepartureTime: &sStopTime,
+				DelaySec:               edgeDepDelay[i],
+				IsDelayed:              edgeDepDelay[i] >= 60,
+				IsBlocked:              ad.IsStopBlocked(intermediateStop.SID) || (edge.RID != "" && ad.IsStopBlockedOnLine(intermediateStop.SID, edge.RID)),
+				Lat:                    intermediateStop.Lat,
+				Lon:                    intermediateStop.Long,
 			})
 			currentLeg.ToSID = utils.IdRemoveIDFMPrefix(edge.ToSID)
 			currentLeg.ArrivalTime = baseDate.Add(time.Duration(edgeArr[i]) * time.Second)
 			currentLeg.DurationSec = int(currentLeg.ArrivalTime.Sub(currentLeg.DepartureTime).Seconds())
+			if currentLeg.Type == types.LegTypeTransit {
+				sArr := baseDate.Add(time.Duration(edgeSchedArr[i]) * time.Second)
+				currentLeg.ScheduledArrivalTime = &sArr
+				currentLeg.ArrivalDelaySec = edgeArrDelay[i]
+				if edgeDepDelay[i] >= 60 || edgeArrDelay[i] >= 60 {
+					currentLeg.IsDelayed = true
+				}
+			}
 
 			if edge.RID == "" {
 				walkingDuration += edge.Weight

@@ -29,10 +29,15 @@ type TripLeg struct {
 	FromLon       float64   `json:"from_lon,omitempty"`
 	ToLat         float64   `json:"to_lat,omitempty"`
 	ToLon         float64   `json:"to_lon,omitempty"`
-	DepartureTime time.Time `json:"departure_time"`
-	ArrivalTime   time.Time `json:"arrival_time"`
-	DurationSec   int       `json:"duration_sec"`
-	DistanceKm    float64   `json:"distance_km,omitempty"`
+	DepartureTime          time.Time  `json:"departure_time"`
+	ArrivalTime            time.Time  `json:"arrival_time"`
+	ScheduledDepartureTime *time.Time `json:"scheduled_departure_time,omitempty"`
+	ScheduledArrivalTime   *time.Time `json:"scheduled_arrival_time,omitempty"`
+	DepartureDelaySec      int        `json:"departure_delay_sec,omitempty"`
+	ArrivalDelaySec        int        `json:"arrival_delay_sec,omitempty"`
+	IsDelayed              bool       `json:"is_delayed,omitempty"`
+	DurationSec            int        `json:"duration_sec"`
+	DistanceKm             float64    `json:"distance_km,omitempty"`
 
 	Route             *RouteSummary      `json:"route,omitempty"`
 	Headsign          string             `json:"headsign,omitempty"`
@@ -67,13 +72,17 @@ type RouteSummary struct {
 }
 
 type IntermediateStop struct {
-	SID           string    `json:"sid"`
-	Name          string    `json:"name"`
-	ArrivalTime   time.Time `json:"arrival_time"`
-	DepartureTime time.Time `json:"departure_time"`
-	IsBlocked     bool      `json:"is_blocked,omitempty"`
-	Lat           float64   `json:"lat,omitempty"`
-	Lon           float64   `json:"lon,omitempty"`
+	SID                    string     `json:"sid"`
+	Name                   string     `json:"name"`
+	ArrivalTime            time.Time  `json:"arrival_time"`
+	DepartureTime          time.Time  `json:"departure_time"`
+	ScheduledArrivalTime   *time.Time `json:"scheduled_arrival_time,omitempty"`
+	ScheduledDepartureTime *time.Time `json:"scheduled_departure_time,omitempty"`
+	DelaySec               int        `json:"delay_sec,omitempty"`
+	IsDelayed              bool       `json:"is_delayed,omitempty"`
+	IsBlocked              bool       `json:"is_blocked,omitempty"`
+	Lat                    float64    `json:"lat,omitempty"`
+	Lon                    float64    `json:"lon,omitempty"`
 }
 
 type TripPositionInTrain struct {

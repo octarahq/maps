@@ -19,6 +19,10 @@ type Edge struct {
 	TripIndex    uint32
 	DepTime      uint32
 	ArrTime      uint32
+	SchedDepTime uint32
+	SchedArrTime uint32
+	DepDelaySec  int
+	ArrDelaySec  int
 }
 
 type GraphType map[string][]Edge

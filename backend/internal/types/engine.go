@@ -33,16 +33,22 @@ type RoutesToCalculateType struct {
 }
 
 type DepartureInfo struct {
-	RID         string    `json:"route_id"`
-	RName       string    `json:"route_name"`
-	RColor      string    `json:"color"`
-	RType       RouteType `json:"type"`
-	Picto       string    `json:"picto,omitempty"`
-	Headsign    string    `json:"headsign"`
-	DepSec      int       `json:"dep_sec"`
-	Time        time.Time `json:"time"`
-	TimeString  string    `json:"time_string"`
-	WaitMinutes float64   `json:"wait_minutes"`
+	RID                 string     `json:"route_id"`
+	RName               string     `json:"route_name"`
+	RColor              string     `json:"color"`
+	RType               RouteType  `json:"type"`
+	Picto               string     `json:"picto,omitempty"`
+	Headsign            string     `json:"headsign"`
+	DepSec              int        `json:"dep_sec"`
+	Time                time.Time  `json:"time"`
+	TimeString          string     `json:"time_string"`
+	WaitMinutes         float64    `json:"wait_minutes"`
+	ScheduledDepSec     int        `json:"scheduled_dep_sec,omitempty"`
+	ScheduledTime       *time.Time `json:"scheduled_time,omitempty"`
+	ScheduledTimeString string     `json:"scheduled_time_string,omitempty"`
+	DelaySec            int        `json:"delay_sec"`
+	DelayMinutes        int        `json:"delay_minutes"`
+	IsDelayed           bool       `json:"is_delayed"`
 }
 
 type DisruptionCause uint8

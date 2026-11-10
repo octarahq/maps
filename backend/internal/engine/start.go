@@ -18,24 +18,29 @@ type ShapeEntry struct {
 }
 
 type Engine struct {
-	Net              types.Network
-	Graph            types.GraphType
-	ReverseGraph     types.GraphType
-	Extras           types.ExtraData
-	CalendarIndex    *utils.CalendarIndex
-	Disruptions      []types.Disruption
-	disruptionsMu    *sync.RWMutex
-	parentsByChild   map[string]string
-	childrenByParent map[string][]string
-	rawSIDByClean    map[string]string
-	shapesIndex      map[string][][2]float64
-	shapesByType     map[types.RouteType][]ShapeEntry
+	Net                 types.Network
+	Graph               types.GraphType
+	ReverseGraph        types.GraphType
+	Extras              types.ExtraData
+	CalendarIndex       *utils.CalendarIndex
+	Disruptions         []types.Disruption
+	disruptionsMu       *sync.RWMutex
+	delays              *DelaysData
+	delaysMu            *sync.RWMutex
+	tripIdxByUUID       map[string][]uint32
+	tripIdxByRouteSName map[string][]uint32
+	parentsByChild      map[string]string
+	childrenByParent    map[string][]string
+	rawSIDByClean       map[string]string
+	shapesIndex         map[string][][2]float64
+	shapesByType        map[types.RouteType][]ShapeEntry
 }
 
 
 func StartEngine() Engine {
 	var e Engine
 	e.disruptionsMu = &sync.RWMutex{}
+	e.delaysMu = &sync.RWMutex{}
 	e.parentsByChild = make(map[string]string)
 	e.childrenByParent = make(map[string][]string)
 	e.rawSIDByClean = make(map[string]string)
@@ -194,13 +199,33 @@ func StartEngine() Engine {
 
 	e.Graph = utils.BuildGraph(net, e.CalendarIndex)
 	e.ReverseGraph = utils.BuildReverseGraph(e.Graph)
+	e.buildTripLookupIndices()
 
-	e.FetchDisruptions()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		e.FetchDisruptions()
+	}()
+	go func() {
+		defer wg.Done()
+		e.FetchDelays()
+	}()
+	wg.Wait()
+
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 			e.FetchDisruptions()
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			e.FetchDelays()
 		}
 	}()
 
