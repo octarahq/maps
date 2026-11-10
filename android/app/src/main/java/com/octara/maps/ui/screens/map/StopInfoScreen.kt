@@ -279,7 +279,8 @@ fun StopInfoSheetContent(
     modifier: Modifier = Modifier,
     sheetState: SheetState? = null,
     onClose: (() -> Unit)? = null,
-    onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null
+    onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null,
+    onStopDetailsLoaded: ((com.octara.maps.types.LayerStop) -> Unit)? = null
 ) {
     val router = LocalRouter.current
     val favoritesManager = com.octara.maps.managers.FavoritesStopsManager()
@@ -323,6 +324,34 @@ fun StopInfoSheetContent(
 
         val allDepartures = response?.departures.orEmpty()
         val allRoutes = response?.routes.orEmpty()
+
+        if (response != null && response.stop.lat != 0f && response.stop.lon != 0f) {
+            val stopRoutes = allRoutes.map { r ->
+                com.octara.maps.types.LayerStopRoute(
+                    name = r.short_name.ifBlank { r.name },
+                    picto = r.picto ?: "",
+                    color = r.color ?: "",
+                    type = r.type
+                )
+            }
+            val inferredStopType = when {
+                allRoutes.any { it.type == RouteType.TRAIN } -> com.octara.maps.types.StopType.RAIL
+                allRoutes.any { it.type == RouteType.METRO } -> com.octara.maps.types.StopType.METRO
+                allRoutes.any { it.type == RouteType.TRAM } -> com.octara.maps.types.StopType.STREET_TRAM
+                allRoutes.any { it.type == RouteType.CABLE_TRAM || it.type == RouteType.AERIAL_LIFT } -> com.octara.maps.types.StopType.LIFT
+                else -> com.octara.maps.types.StopType.STREET_BUS
+            }
+            onStopDetailsLoaded?.invoke(
+                com.octara.maps.types.LayerStop(
+                    id = response.stop.id,
+                    name = response.stop.name,
+                    type = inferredStopType,
+                    lat = response.stop.lat.toDouble(),
+                    lon = response.stop.lon.toDouble(),
+                    routes = stopRoutes
+                )
+            )
+        }
 
         val departuresByRoute = allDepartures.groupBy { dep ->
             dep.route_id?.removePrefix("IDFM:") ?: ""

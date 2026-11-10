@@ -107,12 +107,16 @@ sealed interface Screen {
             onClose: () -> Unit,
             onUpdateTarget: (LatLng, String?) -> Unit
         ) {
+            val router = LocalRouter.current
             StopInfoSheetContent(
                 stopId = stopId,
                 sheetState = sheetState,
                 onClose = onClose,
                 onStopLoaded = { stopLat, stopLon, stopName ->
                     onUpdateTarget(LatLng(stopLat, stopLon), stopName)
+                },
+                onStopDetailsLoaded = { layerStop ->
+                    router.selectedStopDetails = layerStop
                 }
             )
         }
@@ -160,6 +164,8 @@ class Router(initialScreen: Screen = Screen.Map) {
 
     var activeJourney by mutableStateOf<com.octara.maps.types.ParsedTrip?>(null)
 
+    var selectedStopDetails by mutableStateOf<com.octara.maps.types.LayerStop?>(null)
+
     private val backStack = mutableListOf(initialScreen)
 
     val canGoBack: Boolean
@@ -177,6 +183,9 @@ class Router(initialScreen: Screen = Screen.Map) {
                 if (screen !is Screen.JourneyPlanner) {
                     activeJourney = null
                 }
+                if (screen !is Screen.StopInfo) {
+                    selectedStopDetails = null
+                }
             }
         }
     }
@@ -188,6 +197,9 @@ class Router(initialScreen: Screen = Screen.Map) {
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
             if (activeMapScreen !is Screen.JourneyPlanner) {
                 activeJourney = null
+            }
+            if (activeMapScreen !is Screen.StopInfo) {
+                selectedStopDetails = null
             }
             return true
         }
@@ -202,6 +214,7 @@ class Router(initialScreen: Screen = Screen.Map) {
             currentScreen = root
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
             activeJourney = null
+            selectedStopDetails = null
         }
     }
 }

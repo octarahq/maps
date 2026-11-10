@@ -275,6 +275,8 @@ fun TransitMap(
     markerPosition: LatLng? = null,
     markerTitle: String? = null,
     activeJourney: ParsedTrip? = null,
+    currentScreen: Screen = Screen.Map,
+    selectedStopDetails: LayerStop? = null,
     animationDurationMs: Int = 1200,
     onMapReady: ((MapLibreMap) -> Unit)? = null
 ) {
@@ -335,7 +337,7 @@ fun TransitMap(
         }
     }
 
-    LaunchedEffect(markerPosition, markerTitle, mapInstance, isMapReady) {
+    LaunchedEffect(markerPosition, markerTitle, currentScreen, selectedStopDetails, mapInstance, isMapReady) {
         val map = mapInstance
         if (map != null && isMapReady) {
             currentMarker?.let {
@@ -346,7 +348,8 @@ fun TransitMap(
                 currentMarker = null
             }
 
-            if (markerPosition != null) {
+            val suppressPin = currentScreen is Screen.StopInfo && selectedStopDetails != null
+            if (markerPosition != null && !suppressPin) {
                 val markerOptions = MarkerOptions()
                     .position(markerPosition)
                 markerTitle?.let { markerOptions.title(it) }
@@ -487,10 +490,50 @@ fun TransitMap(
     }
 
 
-    LaunchedEffect(mapInstance, isMapReady) {
+    LaunchedEffect(mapInstance, isMapReady, currentScreen) {
         val map = mapInstance
         if (map != null && isMapReady) {
             var fetchJob: kotlinx.coroutines.Job? = null
+
+            val mapClickListener = MapLibreMap.OnMapClickListener { latLng ->
+                if (currentScreen is Screen.Map && visibleStops.isNotEmpty()) {
+                    val clickScreenPt = try {
+                        map.projection.toScreenLocation(latLng)
+                    } catch (_: Exception) {
+                        null
+                    }
+
+                    if (clickScreenPt != null) {
+                        val touchRadiusPx = 28 * context.resources.displayMetrics.density
+                        val clickedStop = visibleStops.firstOrNull { stop ->
+                            val stopScreenPt = try {
+                                map.projection.toScreenLocation(LatLng(stop.lat, stop.lon))
+                            } catch (_: Exception) {
+                                null
+                            } ?: return@firstOrNull false
+
+                            val dx = abs(clickScreenPt.x - stopScreenPt.x)
+                            val dy = abs(clickScreenPt.y - stopScreenPt.y)
+                            dx < touchRadiusPx * 2.5f && dy < touchRadiusPx
+                        }
+
+                        if (clickedStop != null) {
+                            router.navigateTo(
+                                Screen.StopInfo(
+                                    stopId = clickedStop.id,
+                                    lat = clickedStop.lat.toDouble(),
+                                    lon = clickedStop.lon.toDouble(),
+                                    name = clickedStop.name
+                                ),
+                                popCurrent = true
+                            )
+                            return@OnMapClickListener true
+                        }
+                    }
+                }
+                false
+            }
+            map.addOnMapClickListener(mapClickListener)
 
             val cameraMoveListener = MapLibreMap.OnCameraMoveListener {
                 cameraMoveTick++
@@ -502,7 +545,10 @@ fun TransitMap(
                 val camPos = map.cameraPosition
                 val rawZoom = camPos.zoom
 
-                if (rawZoom < 8.0) {
+                val showRoutesLines = currentScreen is Screen.Map || currentScreen is Screen.StopInfo
+                val showLayerStops = currentScreen is Screen.Map
+
+                if (!showRoutesLines || rawZoom < 8.0) {
                     visibleStops = emptyList()
                     val style = map.style
                     if (style != null) {
@@ -510,7 +556,8 @@ fun TransitMap(
                             FeatureCollection.fromFeatures(arrayOf())
                         )
                     }
-                    return@OnCameraIdleListener
+                    if (!showRoutesLines) return@OnCameraIdleListener
+                    if (rawZoom < 8.0) return@OnCameraIdleListener
                 }
 
                 val proj = map.projection
@@ -523,7 +570,7 @@ fun TransitMap(
                 val bounds = visibleRegion?.latLngBounds
                 if (bounds != null) {
                     val linesZoom = rawZoom.roundToInt().coerceIn(9, 15)
-                    val showStops = rawZoom >= 11.5
+                    val showStops = showLayerStops && rawZoom >= 11.5
                     val stopsZoom = when {
                         rawZoom < 12.6 -> 10
                         rawZoom < 13.6 -> 12
@@ -725,27 +772,22 @@ fun TransitMap(
 
         val map = mapInstance
         if (map != null && isMapReady && activeJourney == null) {
-            visibleStops.forEach { stop ->
-                key("${stop.id}:${stop.type.value}:${stop.name}:${stop.lat}:${stop.lon}") {
+            if (currentScreen is Screen.StopInfo && selectedStopDetails != null) {
+                key("selected_stop_${selectedStopDetails.id}") {
                     StopItemDisplay(
-                        stop = stop,
+                        stop = selectedStopDetails,
                         withBG = true,
-                        onClick = {
-                            router.navigateTo(
-                                Screen.StopInfo(
-                                    stopId = stop.id,
-                                    lat = stop.lat.toDouble(),
-                                    lon = stop.lon.toDouble(),
-                                    name = stop.name
-                                ),
-                                popCurrent = true
-                            )
-                        },
+                        onClick = {},
                         modifier = Modifier.offset {
                             @Suppress("UNUSED_EXPRESSION")
                             cameraMoveTick
                             val screenPt = try {
-                                map.projection.toScreenLocation(LatLng(stop.lat, stop.lon))
+                                map.projection.toScreenLocation(
+                                    LatLng(
+                                        selectedStopDetails.lat,
+                                        selectedStopDetails.lon
+                                    )
+                                )
                             } catch (_: Exception) {
                                 null
                             }
@@ -759,6 +801,33 @@ fun TransitMap(
                             }
                         }
                     )
+                }
+            } else if (currentScreen is Screen.Map) {
+                visibleStops.forEach { stop ->
+                    key("${stop.id}:${stop.type.value}:${stop.name}:${stop.lat}:${stop.lon}") {
+                        StopItemDisplay(
+                            stop = stop,
+                            withBG = true,
+                            onClick = null,
+                            modifier = Modifier.offset {
+                                @Suppress("UNUSED_EXPRESSION")
+                                cameraMoveTick
+                                val screenPt = try {
+                                    map.projection.toScreenLocation(LatLng(stop.lat, stop.lon))
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                if (screenPt != null) {
+                                    IntOffset(
+                                        x = screenPt.x.roundToInt() - iconHalfPx,
+                                        y = screenPt.y.roundToInt() - iconHalfPx
+                                    )
+                                } else {
+                                    IntOffset(-10000, -10000)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }

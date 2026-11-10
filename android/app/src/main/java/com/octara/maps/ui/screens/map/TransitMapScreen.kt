@@ -334,6 +334,8 @@ fun TransitMapScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             TransitMap(
                 modifier = Modifier.fillMaxSize(),
+                currentScreen = currentScreen,
+                selectedStopDetails = router.selectedStopDetails,
                 cameraTarget = targetCoords,
                 cameraZoom = currentScreen.cameraZoom,
                 bottomPaddingPx = sheetPeekHeightPx,
