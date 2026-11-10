@@ -1141,7 +1141,7 @@ fun TransitLegItem(leg: TripLeg) {
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = route.longName,
+                        text = leg.headsign ?: route.longName,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Normal,
                         color = tColor
