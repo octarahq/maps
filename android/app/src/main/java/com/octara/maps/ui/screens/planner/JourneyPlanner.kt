@@ -1006,7 +1006,7 @@ fun TransitLegItem(leg: TripLeg) {
                             .height(vehicleCardHeight)
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)),
-                        contentAlignment = Alignment.CenterEnd
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         AsyncImage(
                             model = url,
