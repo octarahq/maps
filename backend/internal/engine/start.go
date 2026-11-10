@@ -274,3 +274,9 @@ func (e *Engine) GetReverseEdgesForStop(id string) []types.Edge {
 	}
 	return nil
 }
+
+func (e *Engine) GetShapesIndex() map[string][][2]float64 {
+	return e.shapesIndex
+}
+
+
