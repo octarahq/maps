@@ -1264,9 +1264,9 @@ fun TransitLegItem(leg: TripLeg) {
                     Spacer(modifier = Modifier.height(6.dp))
 
                     val highlightedIndex = when (posInTrain.posAvg) {
-                        TrainPosition.FRONT -> 0
+                        TrainPosition.FRONT -> 2
                         TrainPosition.MIDDLE -> 1
-                        TrainPosition.BACK -> 2
+                        TrainPosition.BACK -> 0
                         TrainPosition.UNKNOWN -> -1
                     }
 
