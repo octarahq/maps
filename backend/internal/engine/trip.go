@@ -178,7 +178,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 
 						fromStop := e.getStopFromIndex(edge.FromSID, stops)
 						transferLeg := types.TripLeg{
-							Type:          types.LegTypeWalk,
+							Type:          types.LegTypeTransfer,
 							FromSID:       utils.IdRemoveIDFMPrefix(edge.FromSID),
 							ToSID:         utils.IdRemoveIDFMPrefix(edge.FromSID),
 							FromStopName:  fromStop.Name,
@@ -646,7 +646,7 @@ func (e *Engine) edgesToParsedTripArrival(
 
 					fromStop := e.getStopFromIndex(edge.FromSID, stops)
 					transferLeg := types.TripLeg{
-						Type:          types.LegTypeWalk,
+						Type:          types.LegTypeTransfer,
 						FromSID:       utils.IdRemoveIDFMPrefix(edge.FromSID),
 						ToSID:         utils.IdRemoveIDFMPrefix(edge.FromSID),
 						FromStopName:  fromStop.Name,
@@ -1063,7 +1063,7 @@ func (e *Engine) populateLegCoordinates(trip *types.ParsedTrip) {
 
 	for i := range trip.Legs {
 		leg := &trip.Legs[i]
-		if leg.Type == types.LegTypeWalk || leg.Type == types.LegTypeBike {
+		if leg.Type == types.LegTypeWalk || leg.Type == types.LegTypeBike || leg.Type == types.LegTypeTransfer {
 			coords := make([][2]float64, 0, 2)
 			if leg.FromLat != 0 || leg.FromLon != 0 {
 				coords = append(coords, [2]float64{leg.FromLat, leg.FromLon})

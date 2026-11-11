@@ -58,6 +58,14 @@ func PrintParsedTrip(trip *types.ParsedTrip) {
 			fmt.Printf(" [%s] walk (%d min%s)\n", legDep, legDur, distStr)
 			fmt.Printf("        └─ from : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.FromStopName, leg.FromSID, IsAccessible(leg.Wheelchair, types.AccessibilityUnknown), IsAccessible(leg.BikesAllowed, types.AccessibilityUnknown))
 			fmt.Printf("        └─ to   : %s (%s) (wheelchair: %t, bikes: %t)\n", leg.ToStopName, leg.ToSID, IsAccessible(leg.Wheelchair, types.AccessibilityUnknown), IsAccessible(leg.BikesAllowed, types.AccessibilityUnknown))
+		case types.LegTypeTransfer:
+			distStr := ""
+			if leg.DistanceKm > 0 {
+				distStr = fmt.Sprintf(", %.2f km", leg.DistanceKm)
+			}
+			fmt.Printf(" [%s] transfer (%d min%s)\n", legDep, legDur, distStr)
+			fmt.Printf("        └─ from : %s (%s)\n", leg.FromStopName, leg.FromSID)
+			fmt.Printf("        └─ to   : %s (%s)\n", leg.ToStopName, leg.ToSID)
 		case types.LegTypeBike:
 			distStr := ""
 			if leg.DistanceKm > 0 {
