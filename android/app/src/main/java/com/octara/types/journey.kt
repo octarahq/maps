@@ -132,7 +132,8 @@ data class TripPositionInTrain(
 enum class LegType(val value: Int) {
     WALK(0),
     TRANSIT(1),
-    BIKE(2);
+    BIKE(2),
+    TRANSFERT(3);
 
     companion object {
         fun fromValue(value: Int): LegType = entries.firstOrNull { it.value == value } ?: WALK

@@ -893,7 +893,9 @@ fun JourneyLegItem(leg: TripLeg) {
     if (leg.type == com.octara.maps.types.LegType.TRANSIT) {
         TransitLegItem(leg = leg)
     } else if (leg.type == com.octara.maps.types.LegType.BIKE) {
-        WalkingLegItem(leg = leg)
+        BikingLegItem(leg = leg)
+    } else if (leg.type == com.octara.maps.types.LegType.TRANSFERT) {
+        TransfertLegItem(leg = leg)
     } else {
         WalkingLegItem(leg = leg)
     }
@@ -915,6 +917,79 @@ fun formatTimeString(time: String?): String {
         val m = it.groupValues[2]
         "${h}h$m"
     } ?: ""
+}
+
+@Composable
+fun TransfertLegItem(leg: TripLeg) {
+    val tColor = Color(0xFF757575)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier.width(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .width(16.dp)
+                    .height(55.dp)
+            ) {
+                val strokeWidth = 6.dp.toPx()
+                val centerX = size.width / 2f
+                val arrowWidth = 7.dp.toPx()
+                val arrowHeadHeight = 7.dp.toPx()
+
+                val topPath = Path().apply {
+                    moveTo(centerX - arrowWidth, arrowHeadHeight)
+                    lineTo(centerX, 0f)
+                    lineTo(centerX + arrowWidth, arrowHeadHeight)
+                }
+                drawPath(
+                    path = topPath,
+                    color = tColor,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = strokeWidth,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+
+                val bottomPath = Path().apply {
+                    moveTo(centerX - arrowWidth, size.height - arrowHeadHeight)
+                    lineTo(centerX, size.height)
+                    lineTo(centerX + arrowWidth, size.height - arrowHeadHeight)
+                }
+                drawPath(
+                    path = bottomPath,
+                    color = tColor,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = strokeWidth,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+
+                drawLine(
+                    color = tColor,
+                    start = Offset(centerX, 0f),
+                    end = Offset(centerX, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            }
+        }
+
+        Text(
+            text = "Correpondance",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = tColor,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+    }
 }
 
 @Composable
@@ -945,8 +1020,60 @@ fun WalkingLegItem(leg: TripLeg) {
             }
         }
 
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+            contentDescription = "Marcher",
+            tint = tColor,
+            modifier = Modifier
+                .size(26.dp)
+        )
         Text(
             text = "Marcher durant ${distanceToString(leg.distanceKm)}",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = tColor,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+    }
+}
+
+@Composable
+fun BikingLegItem(leg: TripLeg) {
+    val tColor = Color(0xFF757575)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier.width(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.height(55.dp)
+            ) {
+                repeat(4) {
+                    Box(
+                        modifier = Modifier
+                            .width(6.dp)
+                            .height(10.dp)
+                            .background(tColor, RoundedCornerShape(3.dp))
+                    )
+                }
+            }
+        }
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
+            contentDescription = "Vélo",
+            tint = tColor,
+            modifier = Modifier
+                .size(26.dp)
+        )
+        Text(
+            text = "Pédaler durant ${distanceToString(leg.distanceKm)}",
             fontSize = 20.sp,
             fontWeight = FontWeight.Medium,
             color = tColor,
