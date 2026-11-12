@@ -1078,35 +1078,37 @@ fun JourneyPlannerSheetContent(
                 }
             }
 
-            Button(
-                onClick = {
-                    router.navigateTo(Screen.Navigation(trip = journey))
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 12.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+            if (journeyConfig.from == Position.CurrentLocation) {
+                Button(
+                    onClick = {
+                        router.navigateTo(Screen.Navigation(trip = journey))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 ) {
-                    Text(
-                        text = "Démarrer l'itinéraire",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "Itinéraire",
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Démarrer l'itinéraire",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Itinéraire",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
