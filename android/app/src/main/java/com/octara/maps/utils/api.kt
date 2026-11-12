@@ -143,10 +143,14 @@ class Api {
     suspend fun searchStopsByName(
         name: String,
         limit: Int = 10,
-        cpos: Pair<Float, Float>
+        cpos: Pair<Float, Float>? = null
     ): List<ParentStop> = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(name, "UTF-8")
-        val url = "$BASE_URL/stops/autocomplete?q=$encodedQuery&maxstops=$limit&lat=${cpos.first}&lon=${cpos.second}"
+        val url = if (cpos != null) {
+            "$BASE_URL/stops/autocomplete?q=$encodedQuery&maxstops=$limit&lat=${cpos.first}&lon=${cpos.second}"
+        } else {
+            "$BASE_URL/stops/autocomplete?q=$encodedQuery&maxstops=$limit"
+        }
 
         val response: StopResponse = fetchGET(url)
         response.stops ?: emptyList()

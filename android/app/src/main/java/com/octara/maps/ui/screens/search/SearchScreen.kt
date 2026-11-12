@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,7 @@ import com.octara.maps.navigation.Router
 import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
 import kotlinx.coroutines.delay
 import com.octara.maps.ui.components.getStopIconResource
 
@@ -55,13 +57,10 @@ fun SearchScreen(
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    var currentCoords by remember { mutableStateOf(Pair(48.8566f, 2.3522f)) }
+    val currentCoords by LocationManager.currentLocation.collectAsState()
 
     LaunchedEffect(Unit) {
-        val loc = LocationHelper(context).getCurrentLocation()
-        if (loc != null) {
-            currentCoords = loc
-        }
+        LocationManager.fetchCurrentLocation(context)
     }
 
     Surface(

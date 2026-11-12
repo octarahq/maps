@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import com.octara.maps.types.ParentStop
 import com.octara.maps.types.Position
 import com.octara.maps.utils.Api
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
 import kotlinx.coroutines.delay
 
 @Composable
@@ -56,13 +58,10 @@ fun PositionPicker(
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    var currentCoords by remember { mutableStateOf(Pair(48.8566f, 2.3522f)) }
+    val currentCoords by LocationManager.currentLocation.collectAsState()
 
     LaunchedEffect(Unit) {
-        val loc = LocationHelper(context).getCurrentLocation()
-        if (loc != null) {
-            currentCoords = loc
-        }
+        LocationManager.fetchCurrentLocation(context)
     }
 
     LaunchedEffect(query) {
@@ -116,6 +115,7 @@ fun PositionPicker(
                     .padding(horizontal = 16.dp)
             ) {
                 item {
+                    val hasGps = currentCoords != null
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -131,13 +131,13 @@ fun PositionPicker(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFEBF3FF)),
+                                .background(if (hasGps) Color(0xFFEBF3FF) else MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MyLocation,
                                 contentDescription = "Ma position",
-                                tint = Color(0xFF007AFF),
+                                tint = if (hasGps) Color(0xFF007AFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -146,12 +146,12 @@ fun PositionPicker(
                                 text = "Ma position",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF007AFF)
+                                color = if (hasGps) Color(0xFF007AFF) else MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Position GPS actuelle",
+                                text = if (hasGps) "Position GPS actuelle" else "Position GPS non disponible",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF888888)
+                                color = if (hasGps) Color(0xFF888888) else MaterialTheme.colorScheme.error
                             )
                         }
                     }

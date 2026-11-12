@@ -58,9 +58,16 @@ import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,9 +84,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,6 +119,7 @@ import com.octara.maps.types.RouteType
 import com.octara.maps.types.TrainPosition
 import com.octara.maps.types.TripPositionInTrain
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.PositionPicker
@@ -120,12 +130,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.graphicsLayer
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -168,7 +178,8 @@ fun JourneyPlannerSheetContent(
     }
 
     var selectedAllowedModes by remember { mutableStateOf(initialSavedModes) }
-    var currentCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val gpsLocation by LocationManager.currentLocation.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
 
     val initialWheelchair = remember { prefs.getBoolean("preferred_wheelchair", false) }
     val initialWithBike = remember { prefs.getBoolean("preferred_with_bike", false) }
@@ -189,25 +200,29 @@ fun JourneyPlannerSheetContent(
     }
 
     LaunchedEffect(Unit) {
-        val loc = LocationHelper(context).getCurrentLocation()
-        if (loc != null) {
-            val coords = Pair(loc.first.toDouble(), loc.second.toDouble())
-            currentCoords = coords
+        LocationManager.fetchCurrentLocation(context)
+    }
+
+    LaunchedEffect(gpsLocation) {
+        val gps = gpsLocation
+        if (gps != null) {
+            val coords = Pair(gps.first.toDouble(), gps.second.toDouble())
             journeyConfig = journeyConfig.copy(currentGps = coords)
         } else {
-            val fallback = Pair(48.8566, 2.3522)
-            currentCoords = fallback
-            journeyConfig = journeyConfig.copy(currentGps = fallback)
+            journeyConfig = journeyConfig.copy(currentGps = null)
         }
     }
 
     var journeys by remember { mutableStateOf(JourneyResponse()) }
     var isLoading by remember { mutableStateOf(false) }
 
+    val needsGps = (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
+    val isGpsMissing = needsGps && journeyConfig.currentGps == null
+
     LaunchedEffect(journeyConfig) {
-        val needsGps =
-            (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
         if (needsGps && journeyConfig.currentGps == null) {
+            journeys = JourneyResponse()
+            isLoading = false
             return@LaunchedEffect
         }
         isLoading = true
@@ -341,12 +356,20 @@ fun JourneyPlannerSheetContent(
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         val fromIsCurrentLocation = journeyConfig.from is Position.CurrentLocation
-        val fromText = if (fromIsCurrentLocation) "Ma position" else currentFromStopName
-        val fromColor = if (fromIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
+        val fromText = if (fromIsCurrentLocation) {
+            if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
+        } else currentFromStopName
+        val fromColor = if (fromIsCurrentLocation) {
+            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
+        } else Color(0xFF34C759)
 
         val toIsCurrentLocation = journeyConfig.to is Position.CurrentLocation
-        val toText = if (toIsCurrentLocation) "Ma position" else currentToStopName
-        val toColor = if (toIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
+        val toText = if (toIsCurrentLocation) {
+            if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
+        } else currentToStopName
+        val toColor = if (toIsCurrentLocation) {
+            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
+        } else Color(0xFF34C759)
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -846,23 +869,250 @@ fun JourneyPlannerSheetContent(
             router.activeJourney = journey
         }
 
-        val duration = when {
-            isLoading -> "Recherche en cours..."
-            journey == null -> if (journeys.journeys.isEmpty()) "Aucun itinéraire trouvé" else "Non disponible"
-            journey.durationSec < 3600 -> "${journey.durationSec / 60}min"
-            else -> "${journey.durationSec / 3600}h ${(journey.durationSec % 3600) / 60}min"
-        }
+        if (isGpsMissing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Text(
+                            text = "Position GPS introuvable",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Impossible de récupérer votre position actuelle. Activez la localisation ou sélectionnez manuellement un point de départ.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    LocationManager.fetchCurrentLocation(context)
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Réessayer la localisation",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        } else if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 36.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                    Text(
+                        text = "Recherche du meilleur itinéraire...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (journey == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (journeys.journeys.isEmpty()) Icons.Default.SearchOff else Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Text(
+                            text = if (journeys.journeys.isEmpty()) "Aucun itinéraire trouvé" else "Option non disponible",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (journeys.journeys.isEmpty()) {
+                                "Essayez de modifier vos critères ou les modes de transport autorisés."
+                            } else {
+                                "Ce mode de trajet n'a pas donné de résultat pour cet itinéraire."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            val durationText = when {
+                journey.durationSec < 3600 -> "${journey.durationSec / 60} min"
+                else -> {
+                    val h = journey.durationSec / 3600
+                    val m = (journey.durationSec % 3600) / 60
+                    if (m == 0) "${h}h" else "${h}h ${m}min"
+                }
+            }
 
-        Text(
-            text = duration,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
+            val depTimeStr = formatTimeString(journey.departureTime)
+            val arrTimeStr = formatTimeString(journey.arrivalTime)
 
-        for (leg in journey?.legs.orEmpty()) {
-            JourneyLegItem(leg = leg)
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Durée estimée",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = durationText,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                if (depTimeStr.isNotBlank() && arrTimeStr.isNotBlank()) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Horaires",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "$depTimeStr → $arrTimeStr",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Démarrer l'itinéraire",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Itinéraire",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            for (leg in journey.legs) {
+                JourneyLegItem(leg = leg)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
     }
 
