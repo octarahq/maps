@@ -107,6 +107,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.navigation.Screen
 import com.octara.maps.types.JourneyQuery
 import com.octara.maps.types.JourneyResponse
 import com.octara.maps.types.ParsedTrip
@@ -1079,7 +1080,7 @@ fun JourneyPlannerSheetContent(
 
             Button(
                 onClick = {
-
+                    router.navigateTo(Screen.Navigation(trip = journey))
                 },
                 modifier = Modifier
                     .fillMaxWidth()

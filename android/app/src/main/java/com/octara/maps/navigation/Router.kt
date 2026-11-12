@@ -16,6 +16,7 @@ import com.octara.maps.ui.screens.map.StopInfoSheetContent
 import com.octara.maps.ui.screens.map.TransitMapSheetContent
 import com.octara.maps.ui.screens.planner.JourneyPlannerSheetContent
 import com.octara.maps.ui.screens.search.SearchScreen
+import com.octara.maps.ui.screens.navigation.TransitNavigationScreen
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
@@ -149,6 +150,20 @@ sealed interface Screen {
                 toStopName = toStopName,
                 sheetState = sheetState,
                 onClose = onClose
+            )
+        }
+    }
+
+    data class Navigation(
+        val trip: com.octara.maps.types.ParsedTrip
+    ) : Screen {
+        override val isOverlay: Boolean = true
+
+        @Composable
+        override fun OverlayContent(onBack: () -> Unit) {
+            TransitNavigationScreen(
+                trip = trip,
+                onBack = onBack
             )
         }
     }
