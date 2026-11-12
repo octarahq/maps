@@ -67,6 +67,7 @@ sealed interface Screen {
         ) {
             val router = LocalRouter.current
             TransitMapSheetContent(
+                sheetState = sheetState,
                 onSearchClick = { router.navigateTo(Search) }
             )
         }

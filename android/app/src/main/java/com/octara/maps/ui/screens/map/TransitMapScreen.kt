@@ -29,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,6 +56,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.ui.components.AppSearchBar
+import com.octara.maps.ui.components.InteractiveSheetDragHandle
+import com.octara.maps.ui.components.bottomSheetContentScroll
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
 import com.octara.maps.managers.FavoritesStopsManager
@@ -77,10 +80,12 @@ private fun formatDepartureTime(dep: Number): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransitMapSheetContent(
     onSearchClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sheetState: SheetState? = null
 ) {
     val router = LocalRouter.current
 
@@ -107,10 +112,16 @@ fun TransitMapSheetContent(
         }
     }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .bottomSheetContentScroll(
+                scrollState = scrollState,
+                sheetState = sheetState
+            )
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -359,6 +370,10 @@ fun TransitMapScreen(
         sheetShape = AppDimensions.BottomSheetShape,
         sheetPeekHeight = sheetPeekHeight,
         sheetShadowElevation = AppDimensions.BottomSheetElevation,
+        sheetSwipeEnabled = false,
+        sheetDragHandle = {
+            InteractiveSheetDragHandle(sheetState = sheetState)
+        },
         sheetContent = {
             key(currentScreen) {
                 currentScreen.SheetContent(

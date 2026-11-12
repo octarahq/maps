@@ -113,6 +113,7 @@ import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.api
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.PositionPicker
+import com.octara.maps.ui.components.bottomSheetContentScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
@@ -303,18 +304,7 @@ fun JourneyPlannerSheetContent(
         }
     }
 
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -15f && !isFullscreen && sheetState?.currentValue == SheetValue.Expanded) {
-                    isFullscreen = true
-                } else if (available.y > 15f && isFullscreen) {
-                    isFullscreen = false
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    val scrollState = rememberScrollState()
 
     val screenHeight = configuration.screenHeightDp.dp
     val targetHeight = if (isFullscreen) screenHeight else (screenHeight * 0.82f)
@@ -333,8 +323,21 @@ fun JourneyPlannerSheetContent(
             .height(animatedHeight)
             .then(if (isFullscreen) Modifier.statusBarsPadding() else Modifier)
             .navigationBarsPadding()
-            .nestedScroll(nestedScrollConnection)
-            .verticalScroll(rememberScrollState())
+            .bottomSheetContentScroll(
+                scrollState = scrollState,
+                sheetState = sheetState,
+                onBoundaryDragUp = {
+                    if (!isFullscreen && sheetState?.currentValue == SheetValue.Expanded) {
+                        isFullscreen = true
+                    }
+                },
+                onBoundaryDragDown = if (isFullscreen) {
+                    { isFullscreen = false }
+                } else {
+                    null
+                }
+            )
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         val fromIsCurrentLocation = journeyConfig.from is Position.CurrentLocation
