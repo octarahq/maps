@@ -390,6 +390,8 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 							edgeCopy.SchedArrTime = rtSched.Sched.Arr
 							edgeCopy.DepDelaySec = rtSched.DepDelaySec
 							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Platform = rtSched.Platform
+							edgeCopy.IsLongTrain = rtSched.IsLongTrain
 							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
@@ -529,6 +531,8 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 									edgeCopy.SchedArrTime = rtSched.Sched.Arr
 									edgeCopy.DepDelaySec = rtSched.DepDelaySec
 									edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+									edgeCopy.Platform = rtSched.Platform
+									edgeCopy.IsLongTrain = rtSched.IsLongTrain
 									edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 									if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
 										edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
@@ -738,6 +742,8 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 					edgeCopy.SchedArrTime = rtSched.Sched.Arr
 					edgeCopy.DepDelaySec = rtSched.DepDelaySec
 					edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+					edgeCopy.Platform = rtSched.Platform
+					edgeCopy.IsLongTrain = rtSched.IsLongTrain
 					edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
@@ -849,6 +855,8 @@ func (e *Engine) CalculateRouteStopToStopWithDepartureTime(fromSID, toSID string
 							edgeCopy.SchedArrTime = rtSched.Sched.Arr
 							edgeCopy.DepDelaySec = rtSched.DepDelaySec
 							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Platform = rtSched.Platform
+							edgeCopy.IsLongTrain = rtSched.IsLongTrain
 							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
@@ -1278,6 +1286,8 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 							edgeCopy.SchedArrTime = rtSched.Sched.Arr
 							edgeCopy.DepDelaySec = rtSched.DepDelaySec
 							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Platform = rtSched.Platform
+							edgeCopy.IsLongTrain = rtSched.IsLongTrain
 							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
@@ -1428,6 +1438,8 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 									edgeCopy.SchedArrTime = rtSched.Sched.Arr
 									edgeCopy.DepDelaySec = rtSched.DepDelaySec
 									edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+									edgeCopy.Platform = rtSched.Platform
+									edgeCopy.IsLongTrain = rtSched.IsLongTrain
 									edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 									if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
 										edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign
@@ -1613,6 +1625,8 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 					edgeCopy.SchedArrTime = rtSched.Sched.Arr
 					edgeCopy.DepDelaySec = rtSched.DepDelaySec
 					edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+					edgeCopy.Platform = rtSched.Platform
+					edgeCopy.IsLongTrain = rtSched.IsLongTrain
 					edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 					if int(current.TripIndex)-1 >= 0 && int(current.TripIndex)-1 < len(e.Net.Trips) {
 						edgeCopy.Headsign = e.Net.Trips[current.TripIndex-1].Headsign
@@ -1731,6 +1745,8 @@ func (e *Engine) CalculateRouteStopToStopWithArrivalTime(fromSID, toSID string, 
 							edgeCopy.SchedArrTime = rtSched.Sched.Arr
 							edgeCopy.DepDelaySec = rtSched.DepDelaySec
 							edgeCopy.ArrDelaySec = rtSched.ArrDelaySec
+							edgeCopy.Platform = rtSched.Platform
+							edgeCopy.IsLongTrain = rtSched.IsLongTrain
 							edgeCopy.Weight = int(rtSched.RealArr - rtSched.RealDep)
 							if rtSched.Sched.TripIndex > 0 && int(rtSched.Sched.TripIndex)-1 < len(e.Net.Trips) {
 								edgeCopy.Headsign = e.Net.Trips[rtSched.Sched.TripIndex-1].Headsign

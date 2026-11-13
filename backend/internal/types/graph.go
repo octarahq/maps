@@ -23,6 +23,8 @@ type Edge struct {
 	SchedArrTime uint32
 	DepDelaySec  int
 	ArrDelaySec  int
+	Platform     string
+	IsLongTrain  *bool
 }
 
 type GraphType map[string][]Edge

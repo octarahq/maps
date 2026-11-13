@@ -49,6 +49,8 @@ type DepartureInfo struct {
 	DelaySec            int        `json:"delay_sec"`
 	DelayMinutes        int        `json:"delay_minutes"`
 	IsDelayed           bool       `json:"is_delayed"`
+	Platform            string     `json:"platform,omitempty"`
+	IsLongTrain         *bool      `json:"is_long_train,omitempty"`
 }
 
 type DisruptionCause uint8

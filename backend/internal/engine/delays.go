@@ -30,6 +30,8 @@ type RealtimeCall struct {
 	HasDep         bool
 	HasArr         bool
 	Cancelled      bool
+	Platform       string
+	IsLongTrain    *bool
 }
 
 type tripStopKey struct {
@@ -60,6 +62,8 @@ type RealtimeSchedule struct {
 	RealArr     uint32
 	DepDelaySec int
 	ArrDelaySec int
+	Platform    string
+	IsLongTrain *bool
 }
 
 type siriEstimatedTimetableResp struct {
@@ -80,7 +84,8 @@ type siriEstimatedTimetableResp struct {
 						VehicleJourneyName []struct {
 							Value string `json:"value"`
 						} `json:"VehicleJourneyName"`
-						EstimatedCalls struct {
+						VehicleFeatureRef []string `json:"VehicleFeatureRef"`
+						EstimatedCalls    struct {
 							EstimatedCall []struct {
 								StopPointRef struct {
 									Value string `json:"value"`
@@ -91,6 +96,12 @@ type siriEstimatedTimetableResp struct {
 								AimedDepartureTime    string `json:"AimedDepartureTime"`
 								DepartureStatus       string `json:"DepartureStatus"`
 								ArrivalStatus         string `json:"ArrivalStatus"`
+								DeparturePlatformName struct {
+									Value string `json:"value"`
+								} `json:"DeparturePlatformName"`
+								ArrivalPlatformName struct {
+									Value string `json:"value"`
+								} `json:"ArrivalPlatformName"`
 							} `json:"EstimatedCall"`
 						} `json:"EstimatedCalls"`
 					} `json:"EstimatedVehicleJourney"`
@@ -232,6 +243,17 @@ func (e *Engine) FetchDelays() {
 					}
 				}
 
+				var isLongTrain *bool
+				for _, feat := range vj.VehicleFeatureRef {
+					if strings.EqualFold(feat, "longTrain") {
+						val := true
+						isLongTrain = &val
+					} else if strings.EqualFold(feat, "shortTrain") {
+						val := false
+						isLongTrain = &val
+					}
+				}
+
 				var latestDelay int
 				hasLatestDelay := false
 
@@ -282,6 +304,14 @@ func (e *Engine) FetchDelays() {
 					cancelled := strings.EqualFold(c.DepartureStatus, "CANCELLED") ||
 						strings.EqualFold(c.ArrivalStatus, "CANCELLED")
 
+					platform := strings.TrimSpace(c.DeparturePlatformName.Value)
+					if platform == "" {
+						platform = strings.TrimSpace(c.ArrivalPlatformName.Value)
+					}
+					if strings.EqualFold(platform, "unknown") {
+						platform = ""
+					}
+
 					rc := RealtimeCall{
 						AimedDepSec:    aimedDep,
 						ExpectedDepSec: expDep,
@@ -292,6 +322,8 @@ func (e *Engine) FetchDelays() {
 						HasDep:         hasExpDep,
 						HasArr:         hasExpArr,
 						Cancelled:      cancelled,
+						Platform:       platform,
+						IsLongTrain:    isLongTrain,
 					}
 
 					latestDelay = depDelay
@@ -449,9 +481,9 @@ func (ad *ActiveDelays) findCallForStop(tripIndex uint32, cleanRID, cleanSID str
 	return RealtimeCall{}, false
 }
 
-func (ad *ActiveDelays) ResolveScheduleRealtime(rid, fromSID, toSID string, sched types.DepartureTime) (realDep, realArr uint32, depDelay, arrDelay int, cancelled bool) {
+func (ad *ActiveDelays) ResolveScheduleRealtime(rid, fromSID, toSID string, sched types.DepartureTime) (realDep, realArr uint32, depDelay, arrDelay int, platform string, isLongTrain *bool, cancelled bool) {
 	if ad == nil || ad.data == nil {
-		return sched.Dep, sched.Arr, 0, 0, false
+		return sched.Dep, sched.Arr, 0, 0, "", nil, false
 	}
 
 	cleanRID := utils.IdRemoveIDFMPrefix(rid)
@@ -460,20 +492,23 @@ func (ad *ActiveDelays) ResolveScheduleRealtime(rid, fromSID, toSID string, sche
 
 	depCall, okDep := ad.findCallForStop(sched.TripIndex, cleanRID, cleanFrom, sched.Dep, false)
 	if okDep && depCall.Cancelled {
-		return 0, 0, 0, 0, true
+		return 0, 0, 0, 0, "", nil, true
 	}
 
 	arrCall, okArr := ad.findCallForStop(sched.TripIndex, cleanRID, cleanTo, sched.Arr, true)
 	if okArr && arrCall.Cancelled {
-		return 0, 0, 0, 0, true
+		return 0, 0, 0, 0, "", nil, true
 	}
 
 	if okDep {
 		depDelay = depCall.DepDelaySec
 		realDep = applyDelayToSec(sched.Dep, depDelay)
+		platform = depCall.Platform
+		isLongTrain = depCall.IsLongTrain
 	} else if okArr {
 		depDelay = arrCall.ArrDelaySec
 		realDep = applyDelayToSec(sched.Dep, depDelay)
+		isLongTrain = arrCall.IsLongTrain
 	} else {
 		realDep = sched.Dep
 	}
@@ -481,6 +516,9 @@ func (ad *ActiveDelays) ResolveScheduleRealtime(rid, fromSID, toSID string, sche
 	if okArr {
 		arrDelay = arrCall.ArrDelaySec
 		realArr = applyDelayToSec(sched.Arr, arrDelay)
+		if isLongTrain == nil {
+			isLongTrain = arrCall.IsLongTrain
+		}
 	} else if okDep {
 		arrDelay = depDelay
 		realArr = applyDelayToSec(sched.Arr, arrDelay)
@@ -497,7 +535,25 @@ func (ad *ActiveDelays) ResolveScheduleRealtime(rid, fromSID, toSID string, sche
 		arrDelay = int(realArr) - int(sched.Arr)
 	}
 
-	return realDep, realArr, depDelay, arrDelay, false
+	isTrain := false
+	if ad.engine != nil && ad.engine.routesByID != nil {
+		if r, ok := ad.engine.routesByID[rid]; ok && r.RType == types.RouteTypeTrain {
+			isTrain = true
+		} else if r, ok := ad.engine.routesByID[cleanRID]; ok && r.RType == types.RouteTypeTrain {
+			isTrain = true
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(platform), "unknown") {
+		platform = ""
+	}
+
+	if !isTrain {
+		platform = ""
+		isLongTrain = nil
+	}
+
+	return realDep, realArr, depDelay, arrDelay, platform, isLongTrain, false
 }
 
 func (e *Engine) FindNextDepartureRealtime(edge *types.Edge, currSec uint32, activeServices []bool, ad *ActiveDelays) (RealtimeSchedule, bool) {
@@ -551,7 +607,7 @@ func (e *Engine) FindNextDeparturesRealtime(edge *types.Edge, currSec uint32, li
 			continue
 		}
 
-		realDep, realArr, depDelay, arrDelay, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
+		realDep, realArr, depDelay, arrDelay, platform, isLongTrain, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
 		if cancelled {
 			continue
 		}
@@ -568,6 +624,8 @@ func (e *Engine) FindNextDeparturesRealtime(edge *types.Edge, currSec uint32, li
 			RealArr:     realArr,
 			DepDelaySec: depDelay,
 			ArrDelaySec: arrDelay,
+			Platform:    platform,
+			IsLongTrain: isLongTrain,
 		})
 
 		if s.Dep > currSec && len(candidates) >= limit+4 {
@@ -595,7 +653,7 @@ func (e *Engine) FindTripDepartureRealtime(edge *types.Edge, tripIndex uint32, c
 			if len(activeServices) > 0 && (int(s.ServiceID) >= len(activeServices) || !activeServices[s.ServiceID]) {
 				return RealtimeSchedule{}, false
 			}
-			realDep, realArr, depDelay, arrDelay, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
+			realDep, realArr, depDelay, arrDelay, platform, isLongTrain, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
 			if cancelled {
 				return RealtimeSchedule{}, false
 			}
@@ -606,6 +664,8 @@ func (e *Engine) FindTripDepartureRealtime(edge *types.Edge, tripIndex uint32, c
 					RealArr:     realArr,
 					DepDelaySec: depDelay,
 					ArrDelaySec: arrDelay,
+					Platform:    platform,
+					IsLongTrain: isLongTrain,
 				}, true
 			}
 
@@ -621,6 +681,8 @@ func (e *Engine) FindTripDepartureRealtime(edge *types.Edge, tripIndex uint32, c
 					RealArr:     adjArr,
 					DepDelaySec: int(adjDep) - int(s.Dep),
 					ArrDelaySec: int(adjArr) - int(s.Arr),
+					Platform:    platform,
+					IsLongTrain: isLongTrain,
 				}, true
 			}
 			return RealtimeSchedule{}, false
@@ -678,7 +740,7 @@ func (e *Engine) FindPrevDeparturesRealtime(edge *types.Edge, currSec uint32, li
 		if len(activeServices) > 0 && (int(s.ServiceID) >= len(activeServices) || !activeServices[s.ServiceID]) {
 			continue
 		}
-		realDep, realArr, depDelay, arrDelay, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
+		realDep, realArr, depDelay, arrDelay, platform, isLongTrain, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
 		if cancelled {
 			continue
 		}
@@ -695,6 +757,8 @@ func (e *Engine) FindPrevDeparturesRealtime(edge *types.Edge, currSec uint32, li
 			RealArr:     realArr,
 			DepDelaySec: depDelay,
 			ArrDelaySec: arrDelay,
+			Platform:    platform,
+			IsLongTrain: isLongTrain,
 		})
 		if s.Arr < currSec && len(candidates) >= limit+4 {
 			break
@@ -721,7 +785,7 @@ func (e *Engine) FindTripArrivalRealtime(edge *types.Edge, tripIndex uint32, cur
 			if len(activeServices) > 0 && (int(s.ServiceID) >= len(activeServices) || !activeServices[s.ServiceID]) {
 				return RealtimeSchedule{}, false
 			}
-			realDep, realArr, depDelay, arrDelay, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
+			realDep, realArr, depDelay, arrDelay, platform, isLongTrain, cancelled := ad.ResolveScheduleRealtime(edge.RID, edge.FromSID, edge.ToSID, s)
 			if cancelled {
 				return RealtimeSchedule{}, false
 			}
@@ -732,6 +796,8 @@ func (e *Engine) FindTripArrivalRealtime(edge *types.Edge, tripIndex uint32, cur
 					RealArr:     realArr,
 					DepDelaySec: depDelay,
 					ArrDelaySec: arrDelay,
+					Platform:    platform,
+					IsLongTrain: isLongTrain,
 				}, true
 			}
 			if realArr > currSec && realArr-currSec <= 90 {
@@ -750,6 +816,8 @@ func (e *Engine) FindTripArrivalRealtime(edge *types.Edge, tripIndex uint32, cur
 					RealArr:     adjArr,
 					DepDelaySec: int(adjDep) - int(s.Dep),
 					ArrDelaySec: int(adjArr) - int(s.Arr),
+					Platform:    platform,
+					IsLongTrain: isLongTrain,
 				}, true
 			}
 			return RealtimeSchedule{}, false

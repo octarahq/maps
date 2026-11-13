@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps/backend/internal/types"
 	"maps/backend/internal/utils"
+	"strings"
 	"time"
 )
 
@@ -252,6 +253,14 @@ func (e *Engine) edgesToParsedTripDeparture(
 					if edge.DepDelaySec >= 60 || edge.ArrDelaySec >= 60 {
 						leg.IsDelayed = true
 					}
+					if route.RType == types.RouteTypeTrain {
+						plat := edge.Platform
+						if strings.EqualFold(strings.TrimSpace(plat), "unknown") {
+							plat = ""
+						}
+						leg.DeparturePlatform = plat
+						leg.IsLongTrain = edge.IsLongTrain
+					}
 					currentSchedArrSec = edge.SchedArrTime
 					if currentSchedArrSec == 0 {
 						currentSchedArrSec = edge.ArrTime
@@ -267,6 +276,14 @@ func (e *Engine) edgesToParsedTripDeparture(
 						leg.DepartureDelaySec = rtSched.DepDelaySec
 						if rtSched.DepDelaySec >= 60 || rtSched.ArrDelaySec >= 60 {
 							leg.IsDelayed = true
+						}
+						if route.RType == types.RouteTypeTrain {
+							plat := rtSched.Platform
+							if strings.EqualFold(strings.TrimSpace(plat), "unknown") {
+								plat = ""
+							}
+							leg.DeparturePlatform = plat
+							leg.IsLongTrain = rtSched.IsLongTrain
 						}
 						currentSchedArrSec = rtSched.Sched.Arr
 						currentArrDelaySec = rtSched.ArrDelaySec
@@ -711,6 +728,14 @@ func (e *Engine) edgesToParsedTripArrival(
 				leg.ArrivalDelaySec = edgeArrDelay[i]
 				if edgeDepDelay[i] >= 60 || edgeArrDelay[i] >= 60 {
 					leg.IsDelayed = true
+				}
+				if route.RType == types.RouteTypeTrain {
+					plat := edge.Platform
+					if strings.EqualFold(strings.TrimSpace(plat), "unknown") {
+						plat = ""
+					}
+					leg.DeparturePlatform = plat
+					leg.IsLongTrain = edge.IsLongTrain
 				}
 			} else {
 				walkingDuration += edge.Weight

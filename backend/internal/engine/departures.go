@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"maps/backend/internal/types"
@@ -38,6 +39,16 @@ func buildDepartureInfo(
 	realTime := baseDate.Add(time.Duration(realDep) * time.Second)
 	realTimeStr := fmt.Sprintf("%02d:%02d", (realDep/3600)%24, (realDep%3600)/60)
 
+	platform := rtSched.Platform
+	var isLongTrain *bool = rtSched.IsLongTrain
+	if strings.EqualFold(strings.TrimSpace(platform), "unknown") {
+		platform = ""
+	}
+	if route.RType != types.RouteTypeTrain {
+		platform = ""
+		isLongTrain = nil
+	}
+
 	return types.DepartureInfo{
 		RID:                 cleanRID,
 		RName:               name,
@@ -55,6 +66,8 @@ func buildDepartureInfo(
 		DelaySec:            delaySec,
 		DelayMinutes:        delayMin,
 		IsDelayed:           isDelayed,
+		Platform:            platform,
+		IsLongTrain:         isLongTrain,
 	}
 }
 

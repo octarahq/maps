@@ -31,6 +31,8 @@ type nextDepartureDetail struct {
 	IsDelayed           bool   `json:"is_delayed"`
 	TimeString          string `json:"time_string"`
 	ScheduledTimeString string `json:"scheduled_time_string"`
+	Platform            string `json:"platform,omitempty"`
+	IsLongTrain         *bool  `json:"is_long_train,omitempty"`
 }
 
 func parseStopRoutePair(raw string) (stopRouteReq, bool) {
@@ -230,6 +232,13 @@ func init() {
 						headsign = "Direction inconnue"
 					}
 
+					isTrain := false
+					if r, ok := routes[edge.RID]; ok && r.RType == types.RouteTypeTrain {
+						isTrain = true
+					} else if r, ok := routes[edgeCleanRID]; ok && r.RType == types.RouteTypeTrain {
+						isTrain = true
+					}
+
 					for _, rs := range rtScheds {
 						waitSec := int(rs.RealDep) - int(currSec)
 						if waitSec < 0 {
@@ -243,6 +252,16 @@ func init() {
 						}
 						schedDep := int(rs.Sched.Dep)
 						realDep := int(rs.RealDep)
+						platform := rs.Platform
+						var isLongTrain *bool = rs.IsLongTrain
+						if strings.EqualFold(strings.TrimSpace(platform), "unknown") {
+							platform = ""
+						}
+						if !isTrain {
+							platform = ""
+							isLongTrain = nil
+						}
+
 						routeDetails[headsign] = append(routeDetails[headsign], nextDepartureDetail{
 							WaitSec:             waitSec,
 							DepSec:              realDep,
@@ -252,6 +271,8 @@ func init() {
 							IsDelayed:           rs.DepDelaySec >= 60,
 							TimeString:          fmt.Sprintf("%02d:%02d", (realDep/3600)%24, (realDep%3600)/60),
 							ScheduledTimeString: fmt.Sprintf("%02d:%02d", (schedDep/3600)%24, (schedDep%3600)/60),
+							Platform:            platform,
+							IsLongTrain:         isLongTrain,
 						})
 					}
 				}

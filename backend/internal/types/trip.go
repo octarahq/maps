@@ -48,6 +48,9 @@ type TripLeg struct {
 	Wheelchair   Accessibility `json:"wheelchair"`
 	BikesAllowed Accessibility `json:"bikes_allowed"`
 
+	DeparturePlatform string `json:"departure_platform,omitempty"`
+	IsLongTrain       *bool  `json:"is_long_train,omitempty"`
+
 	Coordinates [][2]float64 `json:"coordinates,omitempty"`
 }
 

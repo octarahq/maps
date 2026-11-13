@@ -34,6 +34,7 @@ type Engine struct {
 	rawSIDByClean       map[string]string
 	shapesIndex         map[string][][2]float64
 	shapesByType        map[types.RouteType][]ShapeEntry
+	routesByID          map[string]types.Route
 }
 
 
@@ -51,6 +52,7 @@ func StartEngine() Engine {
 	e.Net = *net
 	utils.EnrichRoutesWithVehicles(e.Net.Routes)
 	utils.EnrichTripsHeadsignWithTerminus(&e.Net)
+	e.routesByID = utils.IndexRoutesByID(e.Net.Routes)
 
 	for _, s := range e.Net.Stops {
 		clean := utils.IdRemoveIDFMPrefix(s.SID)
