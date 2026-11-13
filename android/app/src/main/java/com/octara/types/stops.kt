@@ -78,7 +78,9 @@ data class Departure(
     val scheduled_time_string: String? = null,
     val delay_sec: Int = 0,
     val delay_minutes: Int = 0,
-    val is_delayed: Boolean = false
+    val is_delayed: Boolean = false,
+    val platform: String? = null,
+    val is_long_train: Boolean? = null
 )
 
 data class FavoriteDepartureInfo(
@@ -89,5 +91,7 @@ data class FavoriteDepartureInfo(
     val delay_minutes: Int = 0,
     val is_delayed: Boolean = false,
     val time_string: String? = null,
-    val scheduled_time_string: String? = null
+    val scheduled_time_string: String? = null,
+    val platform: String? = null,
+    val is_long_train: Boolean? = null
 )

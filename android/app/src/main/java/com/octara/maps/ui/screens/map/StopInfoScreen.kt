@@ -256,6 +256,44 @@ private fun RouteDepartureCard(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            val metaItems = mutableListOf<@Composable () -> Unit>()
+                            if (!dep.platform.isNullOrBlank()) {
+                                metaItems.add {
+                                    Text(
+                                        text = "Quai ${dep.platform}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (dep.is_long_train != null) {
+                                metaItems.add {
+                                    Text(
+                                        text = if (dep.is_long_train) "Train long" else "Train court",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (metaItems.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    metaItems.forEachIndexed { idx, item ->
+                                        if (idx > 0) {
+                                            Text(
+                                                text = "•",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        item()
+                                    }
+                                }
+                            }
                             val delayed = dep.is_delayed || dep.delay_sec >= 60
                             if (delayed) {
                                 val delayMins =

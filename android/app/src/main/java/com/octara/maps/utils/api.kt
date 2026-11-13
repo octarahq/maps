@@ -207,6 +207,8 @@ class Api {
                                         val isDelayed = (item["is_delayed"] as? Boolean) ?: (delaySec >= 60)
                                         val timeStr = item["time_string"] as? String
                                         val schedTimeStr = item["scheduled_time_string"] as? String
+                                        val platform = item["platform"] as? String
+                                        val isLongTrain = item["is_long_train"] as? Boolean
                                         FavoriteDepartureInfo(
                                             wait_sec = waitSec,
                                             dep_sec = depSec,
@@ -215,7 +217,9 @@ class Api {
                                             delay_minutes = delayMin,
                                             is_delayed = isDelayed,
                                             time_string = timeStr,
-                                            scheduled_time_string = schedTimeStr
+                                            scheduled_time_string = schedTimeStr,
+                                            platform = platform,
+                                            is_long_train = isLongTrain
                                         )
                                     }
                                     else -> null

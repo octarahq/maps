@@ -1550,6 +1550,60 @@ fun TransitLegItem(leg: TripLeg) {
             }
         }
 
+        val hasExtraVehicleInfo = !leg.departurePlatform.isNullOrBlank() || leg.isLongTrain != null
+        if (hasExtraVehicleInfo) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(16.dp)
+                        .fillMaxHeight()
+                        .background(tColor)
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, top = 2.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!leg.departurePlatform.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = tColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "Quai ${leg.departurePlatform}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = tColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    if (leg.isLongTrain != null) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = if (leg.isLongTrain) "Train long" else "Train court",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         val hasAccessibilityInfo = leg.wheelchair != Accessibility.UNKNOWN || leg.bikesAllowed != Accessibility.UNKNOWN
         if (hasAccessibilityInfo) {
             Row(
