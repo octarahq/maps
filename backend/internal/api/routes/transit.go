@@ -2,6 +2,7 @@ package routes
 
 import (
 	"maps/backend/internal/engine"
+	"maps/backend/internal/osm"
 	"maps/backend/internal/types"
 	"maps/backend/internal/utils"
 	"net/http"
@@ -202,5 +203,184 @@ func init() {
 				"journey": journey,
 			})
 		},
+	})
+
+	Register(ApiRoute{
+		Method:  http.MethodGet,
+		Path:    "/transit/leg-live",
+		Handler: handleTransitLegLive,
+	})
+}
+
+func parseIsoOrParisTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t, true
+	}
+	return utils.ParseCustomTimeInParis(raw)
+}
+
+func handleTransitLegLive(c *gin.Context, e engine.Engine) {
+	rid := strings.TrimSpace(c.Query("rid"))
+	fromSID := strings.TrimSpace(c.Query("from_sid"))
+	toSID := strings.TrimSpace(c.Query("to_sid"))
+	if rid == "" || (fromSID == "" && toSID == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rid and from_sid/to_sid are required"})
+		return
+	}
+
+	var tripIndex uint32
+	if rawIdx := strings.TrimSpace(c.Query("trip_index")); rawIdx != "" {
+		if parsed, err := strconv.ParseUint(rawIdx, 10, 32); err == nil {
+			tripIndex = uint32(parsed)
+		}
+	}
+
+	schedDep, _ := parseIsoOrParisTime(c.Query("sched_dep"))
+	if schedDep.IsZero() {
+		schedDep, _ = parseIsoOrParisTime(c.Query("departure_time"))
+	}
+	schedArr, _ := parseIsoOrParisTime(c.Query("sched_arr"))
+	if schedArr.IsZero() {
+		schedArr, _ = parseIsoOrParisTime(c.Query("arrival_time"))
+	}
+
+	headsign := strings.TrimSpace(c.Query("headsign"))
+
+	res := e.ResolveLegLive(engine.LegLiveQuery{
+		RID:       rid,
+		FromSID:   fromSID,
+		ToSID:     toSID,
+		TripIndex: tripIndex,
+		SchedDep:  schedDep,
+		SchedArr:  schedArr,
+		Headsign:  headsign,
+	})
+
+	mode := strings.TrimSpace(c.Query("mode"))
+	line := strings.TrimSpace(c.Query("line"))
+	isTrain := e.IsTrainRoute(rid)
+	allowNearest := !isTrain
+	if mode == "" || line == "" {
+
+		cleanRID := utils.IdRemoveIDFMPrefix(rid)
+		for _, r := range e.Net.Routes {
+			if r.RID == rid || utils.IdRemoveIDFMPrefix(r.RID) == cleanRID {
+				if line == "" {
+					line = r.SName
+				}
+				if mode == "" {
+					switch r.RType {
+					case types.RouteTypeMetro:
+						mode = "subway"
+					case types.RouteTypeTram:
+						mode = "tram"
+					case types.RouteTypeTrain:
+						mode = "train"
+					}
+				}
+				break
+			}
+		}
+	}
+	if mode == "subway" || mode == "tram" || mode == "light_rail" {
+		allowNearest = true
+	}
+
+	var fromLat, fromLon, toLat, toLon float64
+	hasFromCoords, hasToCoords := false, false
+	if vLat, err1 := parseCoordinate(c.Query("from_lat")); err1 == nil {
+		if vLon, err2 := parseCoordinate(c.Query("from_lon")); err2 == nil {
+			fromLat, fromLon, hasFromCoords = vLat, vLon, true
+		}
+	}
+	if !hasFromCoords && fromSID != "" {
+		if s, ok := e.SearchStopById(fromSID); ok && (s.Lat != 0 || s.Long != 0) {
+			fromLat, fromLon, hasFromCoords = s.Lat, s.Long, true
+		}
+	}
+	if vLat, err1 := parseCoordinate(c.Query("to_lat")); err1 == nil {
+		if vLon, err2 := parseCoordinate(c.Query("to_lon")); err2 == nil {
+			toLat, toLon, hasToCoords = vLat, vLon, true
+		}
+	}
+	if !hasToCoords && toSID != "" {
+		if s, ok := e.SearchStopById(toSID); ok && (s.Lat != 0 || s.Long != 0) {
+			toLat, toLon, hasToCoords = s.Lat, s.Long, true
+		}
+	}
+
+	prevLat, prevLon, hasPrev := fromLat, fromLon, hasFromCoords
+	if vLat, err1 := parseCoordinate(c.Query("prev_lat")); err1 == nil {
+		if vLon, err2 := parseCoordinate(c.Query("prev_lon")); err2 == nil {
+			prevLat, prevLon, hasPrev = vLat, vLon, true
+		}
+	}
+
+	arrExitSide, arrOsmRef, arrLevel := "", "", ""
+	if hasToCoords && (res.ArrivalPlatform != "" || allowNearest) {
+		pRes := osm.ResolvePlatform(osm.PlatformQuery{
+			Lat:          toLat,
+			Lon:          toLon,
+			Ref:          res.ArrivalPlatform,
+			AllowNearest: allowNearest,
+			FromLat:      prevLat,
+			FromLon:      prevLon,
+			HasFrom:      hasPrev,
+			Headsign:     headsign,
+			Line:         line,
+			Mode:         mode,
+		})
+		if pRes.Found {
+			arrExitSide = pRes.ExitSide
+			arrOsmRef = pRes.Platform.Ref
+			arrLevel = pRes.Platform.Level
+		}
+	}
+
+	depExitSide, depOsmRef, depLevel := "", "", ""
+	if hasFromCoords && (res.DeparturePlatform != "" || allowNearest) {
+		pRes := osm.ResolvePlatform(osm.PlatformQuery{
+			Lat:          fromLat,
+			Lon:          fromLon,
+			Ref:          res.DeparturePlatform,
+			AllowNearest: allowNearest,
+			NextLat:      toLat,
+			NextLon:      toLon,
+			HasNext:      hasToCoords,
+			Headsign:     headsign,
+			Line:         line,
+			Mode:         mode,
+		})
+		if pRes.Found {
+			depExitSide = pRes.ExitSide
+			depOsmRef = pRes.Platform.Ref
+			depLevel = pRes.Platform.Level
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"found":               res.Found,
+		"cancelled":           res.Cancelled,
+		"dep_delay_sec":       res.DepDelaySec,
+		"arr_delay_sec":       res.ArrDelaySec,
+		"real_dep":            res.RealDep,
+		"real_arr":            res.RealArr,
+		"departure_platform":  res.DeparturePlatform,
+		"arrival_platform":    res.ArrivalPlatform,
+		"is_long_train":       res.IsLongTrain,
+		"source":              res.Source,
+		"arrival_exit_side":   arrExitSide,
+		"arrival_osm_ref":     arrOsmRef,
+		"arrival_level":       arrLevel,
+		"departure_exit_side": depExitSide,
+		"departure_osm_ref":   depOsmRef,
+		"departure_level":     depLevel,
 	})
 }

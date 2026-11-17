@@ -18,7 +18,7 @@ func init() {
 					"stops":       len(e.Net.Stops),
 					"routes":      len(e.Net.Routes),
 					"trips":       len(e.Net.Trips),
-					"stops_times": len(e.Net.StopTimes),
+					"stops_times": e.StopTimesCount,
 				},
 			})
 		},

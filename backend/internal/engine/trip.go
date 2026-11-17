@@ -166,6 +166,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 						currentLeg.IsDelayed = true
 					}
 				}
+				e.enrichLegTrainPlatforms(currentLeg, baseDate, delays)
 				trip.Legs = append(trip.Legs, *currentLeg)
 
 				if legType == types.LegTypeTransit {
@@ -395,6 +396,7 @@ func (e *Engine) edgesToParsedTripDeparture(
 				currentLeg.IsDelayed = true
 			}
 		}
+		e.enrichLegTrainPlatforms(currentLeg, baseDate, delays)
 		trip.Legs = append(trip.Legs, *currentLeg)
 	}
 
@@ -648,6 +650,7 @@ func (e *Engine) edgesToParsedTripArrival(
 
 		if isNewLeg {
 			if currentLeg != nil {
+				e.enrichLegTrainPlatforms(currentLeg, baseDate, delays)
 				trip.Legs = append(trip.Legs, *currentLeg)
 
 				if legType == types.LegTypeTransit && currentLeg.Type == types.LegTypeTransit {
@@ -796,6 +799,7 @@ func (e *Engine) edgesToParsedTripArrival(
 	}
 
 	if currentLeg != nil {
+		e.enrichLegTrainPlatforms(currentLeg, baseDate, delays)
 		trip.Legs = append(trip.Legs, *currentLeg)
 	}
 
@@ -1149,5 +1153,44 @@ func (e *Engine) populateLegCoordinates(trip *types.ParsedTrip) {
 
 			leg.Coordinates = stopCoords
 		}
+	}
+}
+
+func (e *Engine) enrichLegTrainPlatforms(leg *types.TripLeg, baseDate time.Time, delays *ActiveDelays) {
+	if leg == nil || leg.Type != types.LegTypeTransit || leg.Route == nil || leg.Route.RouteType != types.RouteTypeTrain || delays == nil {
+		return
+	}
+	schedDepTime := leg.DepartureTime
+	if leg.ScheduledDepartureTime != nil {
+		schedDepTime = *leg.ScheduledDepartureTime
+	}
+	schedArrTime := leg.ArrivalTime
+	if leg.ScheduledArrivalTime != nil {
+		schedArrTime = *leg.ScheduledArrivalTime
+	}
+	var depSec, arrSec uint32
+	if s := int(schedDepTime.Sub(baseDate).Seconds()); s >= 0 {
+		depSec = uint32(s)
+	}
+	if s := int(schedArrTime.Sub(baseDate).Seconds()); s >= 0 {
+		arrSec = uint32(s)
+	}
+	_, _, _, _, depPlat, arrPlat, isLong, cancelled := delays.ResolveSchedulePlatforms(
+		leg.Route.RID,
+		leg.FromSID,
+		leg.ToSID,
+		types.DepartureTime{TripIndex: leg.TripIndex, Dep: depSec, Arr: arrSec},
+	)
+	if cancelled {
+		return
+	}
+	if leg.DeparturePlatform == "" && depPlat != "" {
+		leg.DeparturePlatform = depPlat
+	}
+	if leg.ArrivalPlatform == "" && arrPlat != "" {
+		leg.ArrivalPlatform = arrPlat
+	}
+	if leg.IsLongTrain == nil && isLong != nil {
+		leg.IsLongTrain = isLong
 	}
 }
