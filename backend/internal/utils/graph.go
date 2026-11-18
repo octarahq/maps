@@ -2,11 +2,21 @@ package utils
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
 	"maps/backend/internal/types"
 )
+
+func internString(m map[string]string, s string) string {
+	if s == "" {
+		return ""
+	}
+	if v, ok := m[s]; ok {
+		return v
+	}
+	m[s] = s
+	return s
+}
 
 func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType {
 	var ci *CalendarIndex
@@ -14,7 +24,8 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 		ci = calIndex[0]
 	}
 
-	graph := make(types.GraphType)
+	intern := make(map[string]string, len(net.Stops)+len(net.Routes)+4096)
+	graph := make(types.GraphType, len(net.Stops))
 	trips := IndexTripsByID(net.Trips)
 	tripIndexMap := make(map[string]uint32, len(net.Trips)*2)
 	for i, t := range net.Trips {
@@ -27,7 +38,12 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 	}
 
 	stopsTime := net.StopTimes
-	savedStep := make(map[string]bool)
+	type walkKey struct {
+		from string
+		to   string
+		kind uint8
+	}
+	savedStep := make(map[walkKey]bool)
 
 	type edgeKey struct {
 		from string
@@ -42,7 +58,10 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 
 		if prev.TID == curr.TID {
 			trip := trips[curr.TID]
-			rid := trip.RID
+			rid := internString(intern, trip.RID)
+			fromSID := internString(intern, prev.SId)
+			toSID := internString(intern, curr.SId)
+			headsign := internString(intern, trip.Headsign)
 			tripIndex := tripIndexMap[curr.TID]
 
 			var serviceID uint16
@@ -55,14 +74,14 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 				diff = 30
 			}
 
-			key := edgeKey{from: prev.SId, to: curr.SId, rid: rid}
+			key := edgeKey{from: fromSID, to: toSID, rid: rid}
 			idx, exists := edgeIndices[key]
 			if !exists {
 				edge := types.Edge{
-					FromSID:      prev.SId,
-					ToSID:        curr.SId,
+					FromSID:      fromSID,
+					ToSID:        toSID,
 					RID:          rid,
-					Headsign:     trip.Headsign,
+					Headsign:     headsign,
 					Wheelchair:   trip.WheelChair,
 					BikesAllowed: trip.BikesAllowed,
 					Weight:       diff,
@@ -70,12 +89,12 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 						{Dep: uint32(prev.DTime), Arr: uint32(curr.ATime), ServiceID: serviceID, TripIndex: tripIndex},
 					},
 				}
-				graph[prev.SId] = append(graph[prev.SId], edge)
-				edgeIndices[key] = len(graph[prev.SId]) - 1
+				graph[fromSID] = append(graph[fromSID], edge)
+				edgeIndices[key] = len(graph[fromSID]) - 1
 			} else {
-				pEdge := &graph[prev.SId][idx]
-				if pEdge.Headsign == "" && trip.Headsign != "" {
-					pEdge.Headsign = trip.Headsign
+				pEdge := &graph[fromSID][idx]
+				if pEdge.Headsign == "" && headsign != "" {
+					pEdge.Headsign = headsign
 				}
 				if pEdge.Wheelchair == types.AccessibilityUnknown && trip.WheelChair != types.AccessibilityUnknown {
 					pEdge.Wheelchair = trip.WheelChair
@@ -101,6 +120,7 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 					return cmp.Compare(a.Dep, b.Dep)
 				})
 			}
+			edges[j].Schedules = slices.Clip(edges[j].Schedules)
 		}
 	}
 
@@ -112,11 +132,13 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 		if w <= 0 {
 			w = 180
 		}
-		key := fmt.Sprintf("%s-%s@walk", tr.FromSID, tr.ToSID)
+		fromSID := internString(intern, tr.FromSID)
+		toSID := internString(intern, tr.ToSID)
+		key := walkKey{from: fromSID, to: toSID, kind: 1}
 		if !savedStep[key] {
-			graph[tr.FromSID] = append(graph[tr.FromSID], types.Edge{
-				FromSID:      tr.FromSID,
-				ToSID:        tr.ToSID,
+			graph[fromSID] = append(graph[fromSID], types.Edge{
+				FromSID:      fromSID,
+				ToSID:        toSID,
 				Weight:       w,
 				RID:          "",
 				Wheelchair:   types.AccessibilityYes,
@@ -129,7 +151,9 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 	platformsByParent := make(map[string][]string)
 	for _, s := range net.Stops {
 		if s.ParentStation != "" {
-			platformsByParent[s.ParentStation] = append(platformsByParent[s.ParentStation], s.SID)
+			ps := internString(intern, s.ParentStation)
+			sid := internString(intern, s.SID)
+			platformsByParent[ps] = append(platformsByParent[ps], sid)
 		}
 	}
 
@@ -140,7 +164,7 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 		for _, from := range platforms {
 			for _, to := range platforms {
 				if from != to {
-					key := fmt.Sprintf("%s-%s@walk", from, to)
+					key := walkKey{from: from, to: to, kind: 1}
 					if !savedStep[key] {
 						graph[from] = append(graph[from], types.Edge{
 							FromSID:      from,
@@ -159,11 +183,13 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 
 	for _, s := range net.Stops {
 		if s.ParentStation != "" {
-			keyParentToQuai := fmt.Sprintf("%s-%s@zdc", s.ParentStation, s.SID)
+			ps := internString(intern, s.ParentStation)
+			sid := internString(intern, s.SID)
+			keyParentToQuai := walkKey{from: ps, to: sid, kind: 2}
 			if !savedStep[keyParentToQuai] {
-				graph[s.ParentStation] = append(graph[s.ParentStation], types.Edge{
-					FromSID:      s.ParentStation,
-					ToSID:        s.SID,
+				graph[ps] = append(graph[ps], types.Edge{
+					FromSID:      ps,
+					ToSID:        sid,
 					Weight:       180,
 					RID:          "",
 					Wheelchair:   types.AccessibilityYes,
@@ -172,11 +198,11 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 				savedStep[keyParentToQuai] = true
 			}
 
-			keyQuaiToParent := fmt.Sprintf("%s-%s@zdc", s.SID, s.ParentStation)
+			keyQuaiToParent := walkKey{from: sid, to: ps, kind: 2}
 			if !savedStep[keyQuaiToParent] {
-				graph[s.SID] = append(graph[s.SID], types.Edge{
-					FromSID:      s.SID,
-					ToSID:        s.ParentStation,
+				graph[sid] = append(graph[sid], types.Edge{
+					FromSID:      sid,
+					ToSID:        ps,
 					Weight:       180,
 					RID:          "",
 					Wheelchair:   types.AccessibilityYes,
@@ -187,11 +213,15 @@ func BuildGraph(net *types.Network, calIndex ...*CalendarIndex) types.GraphType 
 		}
 	}
 
+	for fromSID, edges := range graph {
+		graph[fromSID] = slices.Clip(edges)
+	}
+
 	return graph
 }
 
 func BuildReverseGraph(graph types.GraphType) types.GraphType {
-	reverseGraph := make(types.GraphType)
+	reverseGraph := make(types.GraphType, len(graph))
 	for _, edges := range graph {
 		for _, edge := range edges {
 			revEdge := edge
@@ -207,6 +237,9 @@ func BuildReverseGraph(graph types.GraphType) types.GraphType {
 			}
 			reverseGraph[edge.ToSID] = append(reverseGraph[edge.ToSID], revEdge)
 		}
+	}
+	for sid, edges := range reverseGraph {
+		reverseGraph[sid] = slices.Clip(edges)
 	}
 	return reverseGraph
 }

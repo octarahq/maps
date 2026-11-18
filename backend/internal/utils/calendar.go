@@ -242,4 +242,3 @@ func LoadTripShapeMapping(path string) (map[string]string, error) {
 	}
 	return mapping, scanner.Err()
 }
-

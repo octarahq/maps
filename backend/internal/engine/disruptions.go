@@ -48,6 +48,15 @@ type DepartureRes struct {
 	} `json:"impactedSections"`
 }
 
+type BulkLineRes struct {
+	ID              string `json:"id"`
+	ImpactedObjects []struct {
+		Type          string   `json:"type"`
+		ID            string   `json:"id"`
+		DisruptionIDs []string `json:"disruptionIds"`
+	} `json:"impactedObjects"`
+}
+
 func (e *Engine) FetchDisruptions() {
 	url := "https://prim.iledefrance-mobilites.fr/marketplace/disruptions_bulk/disruptions/v2"
 	rData, err := fetchData(url)
@@ -58,6 +67,7 @@ func (e *Engine) FetchDisruptions() {
 
 	var jData struct {
 		Disruptions []DepartureRes `json:"disruptions"`
+		Lines       []BulkLineRes  `json:"lines"`
 	}
 
 	if err := json.NewDecoder(rData).Decode(&jData); err != nil {
@@ -85,7 +95,40 @@ func parseIDFMTime(t string) time.Time {
 
 func parseDisruptions(disruptions struct {
 	Disruptions []DepartureRes `json:"disruptions"`
+	Lines       []BulkLineRes  `json:"lines"`
 }) []types.Disruption {
+	stopObjsByDID := make(map[string][]types.DisruptionImpactedSections)
+	lineObjsByDID := make(map[string][]types.DisruptionImpactedSections)
+	for _, l := range disruptions.Lines {
+		cleanLineID := utils.IdRemoveIDFMPrefix(l.ID)
+		for _, obj := range l.ImpactedObjects {
+			switch obj.Type {
+			case "stop_point", "stop_area":
+				cleanStopID := utils.IdRemoveIDFMPrefix(obj.ID)
+				if cleanLineID != "" && cleanStopID != "" {
+					for _, did := range obj.DisruptionIDs {
+						stopObjsByDID[did] = append(stopObjsByDID[did], types.DisruptionImpactedSections{
+							RID:  cleanLineID,
+							From: cleanStopID,
+						})
+					}
+				}
+			case "line":
+				rid := utils.IdRemoveIDFMPrefix(obj.ID)
+				if rid == "" {
+					rid = cleanLineID
+				}
+				if rid != "" {
+					for _, did := range obj.DisruptionIDs {
+						lineObjsByDID[did] = append(lineObjsByDID[did], types.DisruptionImpactedSections{
+							RID: rid,
+						})
+					}
+				}
+			}
+		}
+	}
+
 	res := make([]types.Disruption, 0, len(disruptions.Disruptions))
 
 	for _, d := range disruptions.Disruptions {
@@ -104,6 +147,13 @@ func parseDisruptions(disruptions struct {
 				From: utils.IdRemoveIDFMPrefix(s.From.Id),
 				To:   utils.IdRemoveIDFMPrefix(s.To.Id),
 			})
+		}
+		if stopSecs := stopObjsByDID[d.Id]; len(stopSecs) > 0 {
+			sections = append(sections, stopSecs...)
+		} else if len(sections) == 0 {
+			if lineSecs := lineObjsByDID[d.Id]; len(lineSecs) > 0 {
+				sections = append(sections, lineSecs...)
+			}
 		}
 
 		cause := types.DisruptionCauseUnknow
@@ -164,6 +214,8 @@ func fetchData(url string) (io.ReadCloser, error) {
 }
 
 type ActiveDisruptions struct {
+	engine           *Engine
+	BlockedLines     map[string]bool
 	BlockedStops     map[string]bool
 	BlockedLineStops map[string]bool
 	BlockedSections  map[string]bool
@@ -175,6 +227,8 @@ func (e *Engine) GetActiveDisruptions(targetTime time.Time) *ActiveDisruptions {
 	targetTime = utils.InParis(targetTime)
 
 	ad := &ActiveDisruptions{
+		engine:           e,
+		BlockedLines:     make(map[string]bool),
 		BlockedStops:     make(map[string]bool),
 		BlockedLineStops: make(map[string]bool),
 		BlockedSections:  make(map[string]bool),
@@ -259,17 +313,14 @@ func (e *Engine) GetActiveDisruptions(targetTime time.Time) *ActiveDisruptions {
 					if to != "" {
 						markStopBlocked(to)
 					}
-				} else {
-					if from != "" {
-						markStopBlockedOnLine(from, rid)
-					}
-					if to != "" {
-						markStopBlockedOnLine(to, rid)
-					}
-					if from != "" && to != "" && from != to {
-						ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, from, to)] = true
-						ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, to, from)] = true
-					}
+				} else if from == "" && to == "" {
+					ad.BlockedLines[rid] = true
+				} else if from != "" && (to == "" || from == to) {
+					markStopBlockedOnLine(from, rid)
+				} else if to != "" && from == "" {
+					markStopBlockedOnLine(to, rid)
+				} else if from != "" && to != "" && from != to {
+					e.markSectionBlocked(ad, rid, from, to, markStopBlockedOnLine)
 				}
 			}
 		} else if d.Severity == types.DisruptionSeverityPerturbate || d.Cause == types.DisruptionCauseDisturbance {
@@ -327,15 +378,138 @@ func (ad *ActiveDisruptions) IsStopBlockedOnLine(sid string, rid string) bool {
 	return ad.BlockedLineStops[fmt.Sprintf("%s:%s", cleanRID, cleanSID)]
 }
 
+func (e *Engine) resolveParentStopID(id string) string {
+	clean := utils.IdRemoveIDFMPrefix(id)
+	if clean == "" {
+		return ""
+	}
+	if e != nil && e.parentsByChild != nil {
+		if p, ok := e.parentsByChild[clean]; ok && p != "" {
+			return p
+		}
+	}
+	return clean
+}
+
+func (e *Engine) markSectionBlocked(ad *ActiveDisruptions, rid, from, to string, markStopBlockedOnLine func(string, string)) {
+	fromP := e.resolveParentStopID(from)
+	toP := e.resolveParentStopID(to)
+
+	ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, from, to)] = true
+	ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, to, from)] = true
+	ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, fromP, toP)] = true
+	ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, toP, fromP)] = true
+
+	if e == nil || e.Graph == nil || fromP == "" || toP == "" || fromP == toP {
+		return
+	}
+
+	collectSIDs := func(parentID string) []string {
+		seen := make(map[string]bool)
+		var out []string
+		add := func(id string) {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+			if e.rawSIDByClean != nil {
+				if raw, ok := e.rawSIDByClean[id]; ok && raw != "" && !seen[raw] {
+					seen[raw] = true
+					out = append(out, raw)
+				}
+			}
+		}
+		add(parentID)
+		if e.childrenByParent != nil {
+			for _, c := range e.childrenByParent[parentID] {
+				add(utils.IdRemoveIDFMPrefix(c))
+			}
+		}
+		return out
+	}
+
+	visited := map[string]bool{fromP: true}
+	prev := make(map[string]string)
+	queue := []string{fromP}
+	found := false
+
+	for len(queue) > 0 && !found {
+		curr := queue[0]
+		queue = queue[1:]
+
+		for _, sid := range collectSIDs(curr) {
+			for _, edge := range e.Graph[sid] {
+				if utils.IdRemoveIDFMPrefix(edge.RID) != rid {
+					continue
+				}
+				nextP := e.resolveParentStopID(edge.ToSID)
+				if nextP == "" || nextP == curr || visited[nextP] {
+					continue
+				}
+				visited[nextP] = true
+				prev[nextP] = curr
+				if nextP == toP {
+					found = true
+					break
+				}
+				queue = append(queue, nextP)
+			}
+			if found {
+				break
+			}
+		}
+	}
+
+	if !found {
+		return
+	}
+
+	var path []string
+	for cur := toP; cur != ""; cur = prev[cur] {
+		path = append(path, cur)
+		if cur == fromP {
+			break
+		}
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+
+	for i := 0; i < len(path)-1; i++ {
+		u, v := path[i], path[i+1]
+		ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, u, v)] = true
+		ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, v, u)] = true
+	}
+	for i := 1; i < len(path)-1; i++ {
+		markStopBlockedOnLine(path[i], rid)
+	}
+}
+
 func (ad *ActiveDisruptions) IsEdgeBlocked(edge *types.Edge) bool {
-	if ad == nil || edge == nil || edge.RID == "" || len(ad.BlockedSections) == 0 {
+	if ad == nil || edge == nil || edge.RID == "" {
 		return false
 	}
 	rid := utils.IdRemoveIDFMPrefix(edge.RID)
+	if ad.BlockedLines[rid] {
+		return true
+	}
+	if ad.IsStopBlockedOnLine(edge.FromSID, edge.RID) || ad.IsStopBlockedOnLine(edge.ToSID, edge.RID) {
+		return true
+	}
+	if len(ad.BlockedSections) == 0 {
+		return false
+	}
 	from := utils.IdRemoveIDFMPrefix(edge.FromSID)
 	to := utils.IdRemoveIDFMPrefix(edge.ToSID)
 	if ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, from, to)] {
 		return true
+	}
+	if ad.engine != nil {
+		fromP := ad.engine.resolveParentStopID(from)
+		toP := ad.engine.resolveParentStopID(to)
+		if (fromP != from || toP != to) && ad.BlockedSections[fmt.Sprintf("%s:%s->%s", rid, fromP, toP)] {
+			return true
+		}
 	}
 	return false
 }
