@@ -91,6 +91,7 @@ data class TripLeg(
     @SerializedName("bikes_allowed") val bikesAllowed: Accessibility = Accessibility.UNKNOWN,
 
     @SerializedName("departure_platform") val departurePlatform: String? = null,
+    @SerializedName("arrival_platform") val arrivalPlatform: String? = null,
     @SerializedName("is_long_train") val isLongTrain: Boolean? = null,
 
     @SerializedName("coordinates") val coordinates: List<List<Double>>? = null

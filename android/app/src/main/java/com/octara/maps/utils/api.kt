@@ -105,7 +105,6 @@ class Api {
         .create()
 
     inline fun <reified T> fetchGET(url: String): T {
-        android.util.Log.d("OctaraApi", "Fetching GET: $url")
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
@@ -114,22 +113,15 @@ class Api {
 
         return try {
             val responseCode = connection.responseCode
-            android.util.Log.d("OctaraApi", "Response code $responseCode for $url")
             if (responseCode !in 200..299) {
                 val errText = try { connection.errorStream?.bufferedReader()?.use { it.readText() } } catch (_: Exception) { null }
-                android.util.Log.e("OctaraApi", "GET failed ($responseCode): $errText")
                 throw IllegalStateException("GET $url failed ($responseCode): $errText")
             }
 
             val type = object : com.google.gson.reflect.TypeToken<T>() {}.type
-            val result = connection.inputStream.bufferedReader().use { reader ->
+            connection.inputStream.bufferedReader().use { reader ->
                 gson.fromJson<T>(reader, type)
             } ?: throw IllegalStateException("json is null")
-            android.util.Log.d("OctaraApi", "Parsed successfully: ${result?.javaClass?.simpleName}")
-            result
-        } catch (e: Exception) {
-            android.util.Log.e("OctaraApi", "Exception during GET $url", e)
-            throw e
         } finally {
             connection.disconnect()
         }
@@ -154,6 +146,285 @@ class Api {
 
         val response: StopResponse = fetchGET(url)
         response.stops ?: emptyList()
+    }
+
+    data class AddressResult(
+        val id: String = "",
+        val label: String = "",
+        val name: String = "",
+        val house_number: String? = null,
+        val street: String? = null,
+        val postcode: String? = null,
+        val city: String? = null,
+        val country: String? = null,
+        val type: String = "",
+        val lat: Float = 0f,
+        val lon: Float = 0f,
+        val distance_m: Double? = null,
+        val score: Double = 0.0
+    )
+
+    private data class AddressResponse(
+        val total: Int,
+        val addresses: List<AddressResult>?
+    )
+
+    suspend fun searchAddresses(
+        query: String,
+        limit: Int = 10,
+        cpos: Pair<Float, Float>? = null
+    ): List<AddressResult> = withContext(Dispatchers.IO) {
+        if (query.trim().length < 3) return@withContext emptyList()
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val url = if (cpos != null) {
+            "$BASE_URL/addresses/search?q=$encodedQuery&limit=$limit&lat=${cpos.first}&lon=${cpos.second}"
+        } else {
+            "$BASE_URL/addresses/search?q=$encodedQuery&limit=$limit"
+        }
+
+        val response: AddressResponse = fetchGET(url)
+        response.addresses ?: emptyList()
+    }
+
+    data class PlatformInfo(
+        val found: Boolean = false,
+        val ref: String? = null,
+        val level: String? = null,
+        val lat: Double? = null,
+        val lon: Double? = null,
+        val exit_side: String? = null
+    )
+
+    data class LegLiveInfo(
+        val found: Boolean = false,
+        val cancelled: Boolean = false,
+        val dep_delay_sec: Int = 0,
+        val arr_delay_sec: Int = 0,
+        val real_dep: String? = null,
+        val real_arr: String? = null,
+        val departure_platform: String? = null,
+        val arrival_platform: String? = null,
+        val is_long_train: Boolean? = null,
+        val source: String? = null,
+        val arrival_exit_side: String? = null,
+        val arrival_osm_ref: String? = null,
+        val arrival_level: String? = null,
+        val departure_exit_side: String? = null,
+        val departure_osm_ref: String? = null,
+        val departure_level: String? = null
+    )
+
+    private fun routeTypeToOsmMode(routeType: RouteType?): String? = when (routeType) {
+        RouteType.METRO -> "subway"
+        RouteType.TRAIN -> "train"
+        RouteType.TRAM -> "tram"
+        else -> null
+    }
+
+    suspend fun getOSMPlatform(
+        lat: Double,
+        lon: Double,
+        ref: String? = null,
+        fromLat: Double? = null,
+        fromLon: Double? = null,
+        allowNearest: Boolean = false,
+        headsign: String? = null,
+        line: String? = null,
+        mode: String? = null,
+        nextLat: Double? = null,
+        nextLon: Double? = null
+    ): PlatformInfo? = withContext(Dispatchers.IO) {
+        val params = mutableListOf("lat=$lat", "lon=$lon")
+        if (!ref.isNullOrBlank()) {
+            params.add("ref=${URLEncoder.encode(ref, "UTF-8")}")
+        }
+        if (fromLat != null && fromLon != null) {
+            params.add("from_lat=$fromLat")
+            params.add("from_lon=$fromLon")
+        }
+        if (nextLat != null && nextLon != null) {
+            params.add("next_lat=$nextLat")
+            params.add("next_lon=$nextLon")
+        }
+        if (allowNearest) {
+            params.add("allow_nearest=true")
+        }
+        if (!headsign.isNullOrBlank()) {
+            params.add("headsign=${URLEncoder.encode(headsign, "UTF-8")}")
+        }
+        if (!line.isNullOrBlank()) {
+            params.add("line=${URLEncoder.encode(line, "UTF-8")}")
+        }
+        if (!mode.isNullOrBlank()) {
+            params.add("mode=${URLEncoder.encode(mode, "UTF-8")}")
+        }
+        val url = "$BASE_URL/osm/platform?${params.joinToString("&")}"
+        runCatching { fetchGET<PlatformInfo>(url) }.getOrNull()
+    }
+
+    suspend fun getLiveLegInfo(leg: com.octara.maps.types.TripLeg): LegLiveInfo? = withContext(Dispatchers.IO) {
+        val rid = leg.route?.rid?.takeIf { it.isNotBlank() } ?: return@withContext null
+        val schedDep = leg.scheduledDepartureTime ?: leg.departureTime
+        val schedArr = leg.scheduledArrivalTime ?: leg.arrivalTime
+        val prevStop = leg.intermediateStops?.lastOrNull()?.takeIf { it.lat != 0.0 || it.lon != 0.0 }
+        val prevLat = prevStop?.lat ?: leg.fromLat.takeIf { it != 0.0 }
+        val prevLon = prevStop?.lon ?: leg.fromLon.takeIf { it != 0.0 }
+        val mode = routeTypeToOsmMode(leg.route?.routeType)
+        val params = mutableListOf(
+            "rid=${URLEncoder.encode(rid, "UTF-8")}",
+            "from_sid=${URLEncoder.encode(leg.fromSID, "UTF-8")}",
+            "to_sid=${URLEncoder.encode(leg.toSID, "UTF-8")}"
+        )
+        if (leg.tripIndex > 0L) params.add("trip_index=${leg.tripIndex}")
+        if (schedDep.isNotBlank()) params.add("sched_dep=${URLEncoder.encode(schedDep, "UTF-8")}")
+        if (schedArr.isNotBlank()) params.add("sched_arr=${URLEncoder.encode(schedArr, "UTF-8")}")
+        if (!leg.headsign.isNullOrBlank()) params.add("headsign=${URLEncoder.encode(leg.headsign, "UTF-8")}")
+        if (!leg.route?.shortName.isNullOrBlank()) params.add("line=${URLEncoder.encode(leg.route!!.shortName, "UTF-8")}")
+        if (!mode.isNullOrBlank()) params.add("mode=${URLEncoder.encode(mode, "UTF-8")}")
+        if (leg.fromLat != 0.0 && leg.fromLon != 0.0) {
+            params.add("from_lat=${leg.fromLat}")
+            params.add("from_lon=${leg.fromLon}")
+        }
+        if (leg.toLat != 0.0 && leg.toLon != 0.0) {
+            params.add("to_lat=${leg.toLat}")
+            params.add("to_lon=${leg.toLon}")
+        }
+        if (prevLat != null && prevLon != null) {
+            params.add("prev_lat=$prevLat")
+            params.add("prev_lon=$prevLon")
+        }
+        val url = "$BASE_URL/transit/leg-live?${params.joinToString("&")}"
+        runCatching { fetchGET<LegLiveInfo>(url) }.getOrNull()
+    }
+
+    suspend fun resolveLiveArrivalPlatform(
+        leg: com.octara.maps.types.TripLeg,
+        preloadedLive: LegLiveInfo? = null,
+        allowLegLiveFetch: Boolean = true
+    ): PlatformInfo? {
+        val routeType = leg.route?.routeType
+        val isMetroOrTram = routeType == RouteType.METRO || routeType == RouteType.TRAM
+        val mode = routeTypeToOsmMode(routeType)
+        val lineName = leg.route?.shortName
+
+        val liveInfo = preloadedLive ?: if (allowLegLiveFetch) getLiveLegInfo(leg) else null
+        val directArrPlatform = liveInfo?.arrival_platform?.trim()?.takeIf { it.isNotBlank() }
+            ?: leg.arrivalPlatform?.trim()?.takeIf { it.isNotBlank() }
+
+        if (liveInfo != null && (!liveInfo.arrival_exit_side.isNullOrBlank() || !directArrPlatform.isNullOrBlank() || !liveInfo.arrival_osm_ref.isNullOrBlank())) {
+            val resolvedRef = directArrPlatform ?: liveInfo.arrival_osm_ref?.takeIf { it.length <= 6 }
+            if (resolvedRef != null || !liveInfo.arrival_exit_side.isNullOrBlank()) {
+                return PlatformInfo(
+                    found = true,
+                    ref = resolvedRef,
+                    level = liveInfo.arrival_level,
+                    exit_side = liveInfo.arrival_exit_side?.takeIf { it.isNotBlank() }
+                )
+            }
+        }
+
+        val rid = leg.route?.rid?.takeIf { it.isNotBlank() }
+        val fallbackPlatform = if (directArrPlatform == null && !isMetroOrTram && rid != null) {
+            val details = runCatching {
+                getNextDepartureDetailsOfMultipleStops(listOf(leg.toSID to rid))
+            }.getOrNull()
+            val cleanStop = leg.toSID.removePrefix("stop_point:IDFM:").removePrefix("IDFM:")
+            val cleanRid = rid.removePrefix("IDFM:")
+            val byHeadsign = details?.get(cleanStop to cleanRid)
+                ?: details?.entries?.firstOrNull { it.key.second == cleanRid }?.value
+            val headsign = leg.headsign?.trim()
+            val candidates = if (byHeadsign != null) {
+                if (!headsign.isNullOrBlank()) {
+                    byHeadsign.entries.firstOrNull { it.key.equals(headsign, ignoreCase = true) }?.value
+                        ?: byHeadsign.values.flatten()
+                } else {
+                    byHeadsign.values.flatten()
+                }
+            } else emptyList()
+            candidates.firstNotNullOfOrNull { it.platform?.trim()?.takeIf(String::isNotBlank) }
+        } else null
+
+        val livePlatform = directArrPlatform ?: fallbackPlatform
+        if (livePlatform == null && !isMetroOrTram) {
+            return null
+        }
+
+        if (leg.toLat == 0.0 && leg.toLon == 0.0) {
+            return livePlatform?.let { PlatformInfo(found = true, ref = it) }
+        }
+        val prevStop = leg.intermediateStops?.lastOrNull()?.takeIf { it.lat != 0.0 || it.lon != 0.0 }
+        val fromLat = (prevStop?.lat ?: leg.fromLat).takeIf { it != 0.0 }
+        val fromLon = (prevStop?.lon ?: leg.fromLon).takeIf { it != 0.0 }
+        val osmInfo = getOSMPlatform(
+            lat = leg.toLat,
+            lon = leg.toLon,
+            ref = livePlatform,
+            fromLat = fromLat,
+            fromLon = fromLon,
+            allowNearest = isMetroOrTram,
+            headsign = leg.headsign,
+            line = lineName,
+            mode = mode
+        )
+        return when {
+            osmInfo != null && osmInfo.found -> {
+                val resolvedRef = livePlatform ?: osmInfo.ref?.takeIf { it.length <= 6 }
+                osmInfo.copy(ref = resolvedRef)
+            }
+            livePlatform != null -> PlatformInfo(found = true, ref = livePlatform)
+            else -> null
+        }
+    }
+
+    data class IndoorStep(
+        val instruction: String = "",
+        val kind: String = "walk",
+        val distance_m: Int = 0,
+        val duration_sec: Int = 0,
+        val from_level: String? = null,
+        val to_level: String? = null,
+        val bearing_deg: Double = 0.0,
+        val turn: String = "straight",
+        val lat: Double = 0.0,
+        val lon: Double = 0.0,
+        val end_lat: Double = 0.0,
+        val end_lon: Double = 0.0
+    )
+
+    data class IndoorRouteResult(
+        val found: Boolean = false,
+        val total_distance_m: Int = 0,
+        val total_duration_sec: Int = 0,
+        val steps: List<IndoorStep> = emptyList()
+    )
+
+    suspend fun getTransferGuide(
+        fromLat: Double,
+        fromLon: Double,
+        toLat: Double,
+        toLon: Double,
+        fromRef: String? = null,
+        toRef: String? = null,
+        fromNearest: Boolean = false,
+        toNearest: Boolean = false,
+        wheelchair: Boolean = false
+    ): IndoorRouteResult? = withContext(Dispatchers.IO) {
+        if ((fromLat == 0.0 && fromLon == 0.0) || (toLat == 0.0 && toLon == 0.0)) {
+            return@withContext null
+        }
+        val params = mutableListOf(
+            "from_lat=$fromLat",
+            "from_lon=$fromLon",
+            "to_lat=$toLat",
+            "to_lon=$toLon"
+        )
+        if (!fromRef.isNullOrBlank()) params.add("from_ref=${URLEncoder.encode(fromRef, "UTF-8")}")
+        if (!toRef.isNullOrBlank()) params.add("to_ref=${URLEncoder.encode(toRef, "UTF-8")}")
+        if (fromNearest) params.add("from_nearest=true")
+        if (toNearest) params.add("to_nearest=true")
+        if (wheelchair) params.add("wheelchair=true")
+        val url = "$BASE_URL/osm/transfer-guide?${params.joinToString("&")}"
+        runCatching { fetchGET<IndoorRouteResult>(url) }.getOrNull()
     }
 
     public data class StopInfoResponse(
@@ -238,8 +509,7 @@ class Api {
                     }
                 }
                 result
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
                 emptyMap()
             }
         }
