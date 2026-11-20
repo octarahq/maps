@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,6 +42,8 @@ import com.octara.maps.types.Position
 import com.octara.maps.utils.Api
 import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.LocationManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 
 @Composable
@@ -55,6 +58,7 @@ fun PositionPicker(
 
     var query by remember { mutableStateOf("") }
     var stops by remember { mutableStateOf<List<ParentStop>>(emptyList()) }
+    var addresses by remember { mutableStateOf<List<Api.AddressResult>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -68,20 +72,24 @@ fun PositionPicker(
         if (query.length < 2) {
             isLoading = false
             stops = emptyList()
+            addresses = emptyList()
             return@LaunchedEffect
         }
 
         delay(300)
         isLoading = true
         try {
-            val result = Api().searchStopsByName(
-                name = query,
-                limit = 20,
-                cpos = currentCoords
-            )
-            stops = result ?: emptyList()
+            val api = Api()
+            val (stopsRes, addressesRes) = coroutineScope {
+                val s = async { runCatching { api.searchStopsByName(name = query, limit = 15, cpos = currentCoords) }.getOrDefault(emptyList()) }
+                val a = async { runCatching { api.searchAddresses(query = query, limit = 10, cpos = currentCoords) }.getOrDefault(emptyList()) }
+                s.await() to a.await()
+            }
+            stops = stopsRes
+            addresses = addressesRes
         } catch (_: Exception) {
             stops = emptyList()
+            addresses = emptyList()
         } finally {
             isLoading = false
         }
@@ -103,7 +111,7 @@ fun PositionPicker(
                 active = true,
                 autoFocus = true,
                 onBack = onDismiss,
-                placeholder = "Rechercher un arrêt...",
+                placeholder = "Rechercher un arrêt ou une adresse...",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 isLoading = isLoading
             )
@@ -194,6 +202,56 @@ fun PositionPicker(
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+
+                items(addresses) { address ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                onSelectPosition(
+                                    Position.Coordinates(address.lat.toDouble(), address.lon.toDouble()),
+                                    address.name
+                                )
+                            }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = "Adresse",
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = address.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            val subtitle = listOfNotNull(
+                                address.postcode?.takeIf { it.isNotBlank() },
+                                address.city?.takeIf { it.isNotBlank() }
+                            ).joinToString(" ").ifBlank { address.label }
+                            if (subtitle.isNotBlank() && subtitle != address.name) {
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
