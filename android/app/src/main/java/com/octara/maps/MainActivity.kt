@@ -32,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.managers.ActiveNavigationManager
 import com.octara.maps.managers.FavoritesStopsManager
+import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
 import com.octara.maps.ui.screens.map.TransitMapScreen
 import com.octara.maps.utils.LocationHelper
@@ -87,6 +89,10 @@ fun MapsApp() {
     }
 
     LaunchedEffect(Unit) {
+        val savedNav = ActiveNavigationManager.loadActiveNavigationIfStillValid(context)
+        if (savedNav != null && router.currentScreen !is Screen.Navigation) {
+            router.navigateTo(Screen.Navigation(trip = savedNav))
+        }
         if (LocationManager.hasLocationPermission(context)) {
             LocationManager.startLocationUpdates(context)
         } else {

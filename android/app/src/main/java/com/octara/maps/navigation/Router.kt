@@ -125,12 +125,13 @@ sealed interface Screen {
     }
 
     data class JourneyPlanner(
-        val toStopId: String,
+        val toStopId: String = "",
         val toStopName: String,
+        val toLat: Double? = null,
+        val toLon: Double? = null,
     ) : Screen {
         override val isDismissible: Boolean = true
         override val showBackButton: Boolean = true
-
 
         override val initialSheetValue: SheetValue
             get() = SheetValue.Expanded
@@ -148,6 +149,8 @@ sealed interface Screen {
             JourneyPlannerSheetContent(
                 toStopId = toStopId,
                 toStopName = toStopName,
+                toLat = toLat,
+                toLon = toLon,
                 sheetState = sheetState,
                 onClose = onClose
             )

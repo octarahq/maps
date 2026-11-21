@@ -63,4 +63,6 @@ dependencies {
     implementation(libs.coil.svg)
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    testImplementation("junit:junit:4.13.2")
 }
