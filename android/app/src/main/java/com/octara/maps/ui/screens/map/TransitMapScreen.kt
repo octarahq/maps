@@ -103,8 +103,7 @@ fun TransitMapSheetContent(
                     val pairs = favoriteStops.map { it.stopId to it.routeId }
                     favoritesStopsNextDepartures =
                         com.octara.maps.utils.Api().getNextDepartureDetailsOfMultipleStops(pairs)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                } catch (_: Exception) {
                 }
             } else {
                 favoritesStopsNextDepartures = emptyMap()

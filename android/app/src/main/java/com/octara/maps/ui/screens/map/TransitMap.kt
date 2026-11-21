@@ -463,8 +463,7 @@ fun TransitMap(
                                 }
                                 style.addLayer(layer)
                                 newLayerIds.add(layerId)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            } catch (_: Exception) {
                             }
                         }
                     }
@@ -481,14 +480,12 @@ fun TransitMap(
                         val paddingPx = (64 * context.resources.displayMetrics.density).toInt()
                         val update = CameraUpdateFactory.newLatLngBounds(bounds, paddingPx)
                         map.animateCamera(update, 1000)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                    } catch (_: Exception) {
                     }
                 }
             }
         }
     }
-
 
     LaunchedEffect(mapInstance, isMapReady, currentScreen) {
         val map = mapInstance
@@ -602,8 +599,7 @@ fun TransitMap(
                                 val res = api.getLayerRoutesLines(tx, ty, linesZoom)
                                 routesLinesCache[key] = res.lines
                                 res.lines
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            } catch (_: Exception) {
                                 emptyList()
                             }
 
@@ -662,8 +658,7 @@ fun TransitMap(
                                 val res = api.getLayerStops(tx, ty, stopsZoom)
                                 stopsCache[key] = res.stops
                                 res.stops
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            } catch (_: Exception) {
                                 emptyList()
                             }
 

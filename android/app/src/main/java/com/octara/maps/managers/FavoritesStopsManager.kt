@@ -81,8 +81,7 @@ class FavoritesStopsManager(context: Context? = null) {
                 if (loaded != null) {
                     favoriteStops.value = loaded
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
             }
         }
 
@@ -91,8 +90,7 @@ class FavoritesStopsManager(context: Context? = null) {
             try {
                 val json = gson.toJson(favorites)
                 prefs.edit().putString(KEY_FAVORITE_STOPS, json).apply()
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
             }
         }
 
