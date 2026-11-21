@@ -24,11 +24,9 @@ func LoadNetwork(path ...string) (*types.Network, error) {
 	defer file.Close()
 
 	var net types.Network
-	dec := gob.NewDecoder(file)
-	if err := dec.Decode(&net); err != nil {
+	if err := gob.NewDecoder(file).Decode(&net); err != nil {
 		return nil, err
 	}
-
 	return &net, nil
 }
 
@@ -45,11 +43,9 @@ func LoadExtra(path ...string) (*types.ExtraData, error) {
 	defer file.Close()
 
 	var extra types.ExtraData
-	dec := gob.NewDecoder(file)
-	if err := dec.Decode(&extra); err != nil {
+	if err := gob.NewDecoder(file).Decode(&extra); err != nil {
 		return nil, err
 	}
-
 	return &extra, nil
 }
 
@@ -57,8 +53,7 @@ func IndexStopsByID(stops []types.Stop) map[string]types.Stop {
 	m := make(map[string]types.Stop, len(stops)*2)
 	for _, s := range stops {
 		m[s.SID] = s
-		clean := IdRemoveIDFMPrefix(s.SID)
-		if clean != s.SID {
+		if clean := IdRemoveIDFMPrefix(s.SID); clean != s.SID {
 			m[clean] = s
 		}
 	}
@@ -69,8 +64,7 @@ func IndexRoutesByID(routes []types.Route) map[string]types.Route {
 	m := make(map[string]types.Route, len(routes)*2)
 	for _, r := range routes {
 		m[r.RID] = r
-		clean := IdRemoveIDFMPrefix(r.RID)
-		if clean != r.RID {
+		if clean := IdRemoveIDFMPrefix(r.RID); clean != r.RID {
 			m[clean] = r
 		}
 	}
@@ -81,8 +75,7 @@ func IndexTripsByID(trips []types.Trip) map[string]types.Trip {
 	m := make(map[string]types.Trip, len(trips)*2)
 	for _, t := range trips {
 		m[t.TID] = t
-		clean := IdRemoveIDFMPrefix(t.TID)
-		if clean != t.TID {
+		if clean := IdRemoveIDFMPrefix(t.TID); clean != t.TID {
 			m[clean] = t
 		}
 	}
@@ -132,14 +125,13 @@ func EnrichParentsStations(net *types.Network) {
 		stopsByCleanID[cleanSID] = s
 
 		cleanPID := IdRemoveIDFMPrefix(s.ParentStation)
+		targetPID := cleanSID
 		if cleanPID != "" {
 			childrenByParent[cleanPID] = append(childrenByParent[cleanPID], s)
-			stopIDToParentID[s.SID] = cleanPID
-			stopIDToParentID[cleanSID] = cleanPID
-		} else {
-			stopIDToParentID[s.SID] = cleanSID
-			stopIDToParentID[cleanSID] = cleanSID
+			targetPID = cleanPID
 		}
+		stopIDToParentID[s.SID] = targetPID
+		stopIDToParentID[cleanSID] = targetPID
 	}
 
 	tripToRoute := make(map[string]string, len(net.Trips))
@@ -153,8 +145,8 @@ func EnrichParentsStations(net *types.Network) {
 		if !ok {
 			continue
 		}
-		rID, ok := tripToRoute[st.TID]
-		if !ok || rID == "" {
+		rID := tripToRoute[st.TID]
+		if rID == "" {
 			continue
 		}
 		routesSet := parentRouteIDs[pID]
@@ -174,29 +166,25 @@ func EnrichParentsStations(net *types.Network) {
 		children := childrenByParent[cleanPID]
 
 		if len(children) > 0 {
-			p.ChildrenStops = make([]string, 0, len(children))
-			for _, c := range children {
-				p.ChildrenStops = append(p.ChildrenStops, IdRemoveIDFMPrefix(c.SID))
+			p.ChildrenStops = make([]string, len(children))
+			for j, c := range children {
+				p.ChildrenStops[j] = IdRemoveIDFMPrefix(c.SID)
 			}
 		}
 
 		switch len(children) {
 		case 0:
 			if st, ok := stopsByCleanID[cleanPID]; ok {
-				p.Lat = st.Lat
-				p.Lon = st.Long
+				p.Lat, p.Lon = st.Lat, st.Long
 			}
 		case 1:
-			p.Lat = children[0].Lat
-			p.Lon = children[0].Long
+			p.Lat, p.Lon = children[0].Lat, children[0].Long
 		case 2:
-			d := CoordsGetDistance(children[0].Long, children[0].Lat, children[1].Long, children[1].Lat)
-			if d <= 0.030 {
+			if CoordsGetDistance(children[0].Long, children[0].Lat, children[1].Long, children[1].Lat) <= 0.030 {
 				p.Lat = (children[0].Lat + children[1].Lat) / 2.0
 				p.Lon = (children[0].Long + children[1].Long) / 2.0
 			} else {
-				p.Lat = children[0].Lat
-				p.Lon = children[0].Long
+				p.Lat, p.Lon = children[0].Lat, children[0].Long
 			}
 		default:
 			var sumLat, sumLon float64
@@ -261,8 +249,7 @@ func EnrichRoutesWithPictos(routes []types.Route, lines []types.LineReferentiel)
 		if cleanID == "" {
 			continue
 		}
-		pictoID := ExtractPictoID(l.Picto)
-		if pictoID != "" {
+		if pictoID := ExtractPictoID(l.Picto); pictoID != "" {
 			pictoMap[cleanID] = pictoID
 		}
 	}
@@ -271,6 +258,176 @@ func EnrichRoutesWithPictos(routes []types.Route, lines []types.LineReferentiel)
 		cleanRID := IdRemoveIDFMPrefix(routes[i].RID)
 		if picto, ok := pictoMap[cleanRID]; ok {
 			routes[i].Picto = picto
+		}
+	}
+}
+
+type vehicleInfo struct {
+	image    string
+	carriage string
+}
+
+var (
+	rerVehicles = map[string]vehicleInfo{
+		"A": {image: "IDFM-rer-a.png"},
+		"B": {image: "IDFM-rer-b.png", carriage: "IDFM-rer-b-carriage.png"},
+		"C": {image: "IDFM-rer-c.png"},
+		"D": {image: "IDFM-rer-d.png"},
+		"E": {image: "IDFM-rer-ng.png"},
+	}
+
+	trainVehicles = map[string]vehicleInfo{
+		"H": {image: "IDFM-train-francilien.png"},
+		"J": {image: "IDFM-train-francilien.png"},
+		"K": {image: "IDFM-train-francilien.png"},
+		"L": {image: "IDFM-train-francilien.png"},
+		"P": {image: "IDFM-train-francilien.png"},
+		"N": {image: "IDFM-train-regio2n.png"},
+		"R": {image: "IDFM-train-regio2n.png"},
+		"U": {image: "IDFM-rer-c.png"},
+	}
+
+	metroVehicles = map[string]vehicleInfo{
+		"1":  {image: "IDFM-metro-1.png"},
+		"2":  {image: "IDFM-metro-2.png"},
+		"3":  {image: "IDFM-metro-3.png"},
+		"3B": {image: "IDFM-metro-3b.png"},
+		"4":  {image: "IDFM-metro-4.png"},
+		"5":  {image: "IDFM-metro-5.png"},
+		"6":  {image: "IDFM-metro-6.png"},
+		"7":  {image: "IDFM-metro-7.png"},
+		"7B": {image: "IDFM-metro-7b.png"},
+		"8":  {image: "IDFM-metro-8.png"},
+		"9":  {image: "IDFM-metro-9.png"},
+		"10": {image: "IDFM-metro-10.png"},
+		"11": {image: "IDFM-metro-11.png"},
+		"12": {image: "IDFM-metro-12.png"},
+		"13": {image: "IDFM-metro-13.png"},
+		"14": {image: "IDFM-metro-14.png"},
+		"15": {image: "IDFM-metro-14.png"},
+		"16": {image: "IDFM-metro-14.png"},
+		"17": {image: "IDFM-metro-14.png"},
+		"18": {image: "IDFM-metro-14.png"},
+	}
+
+	tramVehicles = map[string]vehicleInfo{
+		"T1": {image: "IDFM-tram-1.png"}, "1": {image: "IDFM-tram-1.png"},
+		"T2": {image: "IDFM-tram-2.png"}, "2": {image: "IDFM-tram-2.png"},
+		"T3A": {image: "IDFM-tram-3a.png"}, "3A": {image: "IDFM-tram-3a.png"},
+		"T3B": {image: "IDFM-tram-3b.png"}, "3B": {image: "IDFM-tram-3b.png"},
+		"T4": {image: "IDFM-tram-4.png"}, "4": {image: "IDFM-tram-4.png"},
+		"T5": {image: "IDFM-tram-5.png"}, "5": {image: "IDFM-tram-5.png"},
+		"T6": {image: "IDFM-tram-6.png"}, "6": {image: "IDFM-tram-6.png"},
+		"T7": {image: "IDFM-tram-7.png"}, "7": {image: "IDFM-tram-7.png"},
+		"T8": {image: "IDFM-tram-8.png"}, "8": {image: "IDFM-tram-8.png"},
+		"T9": {image: "IDFM-tram-9.png"}, "9": {image: "IDFM-tram-9.png"},
+		"T10": {image: "IDFM-tram-10.png"}, "10": {image: "IDFM-tram-10.png"},
+		"T11": {image: "IDFM-tram-11.png"}, "11": {image: "IDFM-tram-11.png"},
+		"T12": {image: "IDFM-tram-12.png"}, "12": {image: "IDFM-tram-12.png"},
+		"T13": {image: "IDFM-tram-13.png"}, "13": {image: "IDFM-tram-13.png"},
+	}
+
+	busArticulatedLines = map[string]bool{
+		"PC": true, "91": true, "183": true, "272": true, "26": true, "38": true,
+		"43": true, "62": true, "80": true, "95": true, "ROISSYBUS": true, "ORLYBUS": true,
+	}
+)
+
+func resolveVehicleForRoute(r *types.Route) (image, carriage string) {
+	sname := strings.TrimSpace(r.SName)
+	snameUpper := strings.ToUpper(sname)
+	lnameUpper := strings.ToUpper(strings.TrimSpace(r.LName))
+
+	if (sname == "A" || sname == "B" || sname == "C" || sname == "D" || sname == "E") &&
+		(r.RType == types.RouteTypeTrain || strings.Contains(lnameUpper, "RER")) {
+		if v, ok := rerVehicles[sname]; ok {
+			return v.image, v.carriage
+		}
+	}
+
+	if (sname == "H" || sname == "J" || sname == "K" || sname == "L" || sname == "N" ||
+		sname == "P" || sname == "R" || sname == "U" || sname == "V") && r.RType == types.RouteTypeTrain {
+		if v, ok := trainVehicles[sname]; ok {
+			return v.image, v.carriage
+		}
+		return "IDFM-train-ter.png", ""
+	}
+
+	if r.RType == types.RouteTypeMetro || strings.Contains(lnameUpper, "MÉTRO") || strings.Contains(lnameUpper, "METRO") {
+		if v, ok := metroVehicles[snameUpper]; ok {
+			return v.image, v.carriage
+		}
+		return "IDFM-metro-1.png", ""
+	}
+
+	if r.RType == types.RouteTypeTram {
+		if v, ok := tramVehicles[snameUpper]; ok {
+			return v.image, v.carriage
+		}
+		return "IDFM-tram-1.png", ""
+	}
+
+	if r.RType == types.RouteTypeAerialLift || r.RType == types.RouteTypeCableTram || r.RType == types.RouteTypeFunicular ||
+		strings.Contains(lnameUpper, "CÂBLE") || strings.Contains(lnameUpper, "CABLE") {
+		return "IDFM-cable.png", ""
+	}
+
+	if r.RType == types.RouteTypeBus {
+		switch {
+		case strings.Contains(snameUpper, "TZEN") || strings.Contains(lnameUpper, "TZEN") ||
+			snameUpper == "TVM" || snameUpper == "393":
+			return "IDFM-bus-tzen.png", ""
+		case strings.HasPrefix(snameUpper, "N") && len(sname) <= 4:
+			return "IDFM-bus-noctilien.png", ""
+		case busArticulatedLines[snameUpper]:
+			return "IDFM-bus-articule.png", ""
+		case strings.Contains(lnameUpper, "NAVETTE") || strings.Contains(lnameUpper, "ELECTRIQUE") ||
+			strings.Contains(lnameUpper, "APTIS") || snameUpper == "TRAVERSIERE" || snameUpper == "TUB":
+			return "IDFM-bus-electrique.png", ""
+		default:
+			return "IDFM-bus-default.png", ""
+		}
+	}
+
+	return "IDFM-bus-default.png", ""
+}
+
+func EnrichRoutesWithVehicles(routes []types.Route) {
+	for i := range routes {
+		routes[i].VehicleImage, routes[i].VehicleCarriage = resolveVehicleForRoute(&routes[i])
+	}
+}
+
+func EnrichTripsHeadsignWithTerminus(net *types.Network) {
+	if len(net.Trips) == 0 || len(net.StopTimes) == 0 {
+		return
+	}
+
+	type tripLast struct {
+		maxSeq uint16
+		sid    string
+	}
+	lastStops := make(map[string]tripLast, len(net.Trips))
+	for _, st := range net.StopTimes {
+		cur, ok := lastStops[st.TID]
+		if !ok || st.Seq >= cur.maxSeq {
+			lastStops[st.TID] = tripLast{maxSeq: st.Seq, sid: st.SId}
+		}
+	}
+
+	stopsByID := IndexStopsByID(net.Stops)
+
+	for i := range net.Trips {
+		t := &net.Trips[i]
+		ls, ok := lastStops[t.TID]
+		if !ok {
+			cleanTID := IdRemoveIDFMPrefix(t.TID)
+			ls, ok = lastStops[cleanTID]
+		}
+		if ok {
+			if stop, sOk := stopsByID[ls.sid]; sOk && stop.Name != "" {
+				t.Headsign = stop.Name
+			}
 		}
 	}
 }

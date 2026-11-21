@@ -2,6 +2,9 @@ package engine
 
 import (
 	"log"
+	"runtime"
+	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,24 +21,32 @@ type ShapeEntry struct {
 }
 
 type Engine struct {
-	Net              types.Network
-	Graph            types.GraphType
-	ReverseGraph     types.GraphType
-	Extras           types.ExtraData
-	CalendarIndex    *utils.CalendarIndex
-	Disruptions      []types.Disruption
-	disruptionsMu    *sync.RWMutex
-	parentsByChild   map[string]string
-	childrenByParent map[string][]string
-	rawSIDByClean    map[string]string
-	shapesIndex      map[string][][2]float64
-	shapesByType     map[types.RouteType][]ShapeEntry
+	Net                 types.Network
+	Graph               types.GraphType
+	ReverseGraph        types.GraphType
+	Extras              types.ExtraData
+	CalendarIndex       *utils.CalendarIndex
+	Disruptions         []types.Disruption
+	disruptionsMu       *sync.RWMutex
+	delays              *DelaysData
+	delaysMu            *sync.RWMutex
+	stopMonCache        *stopMonitoringCache
+	tripIdxByUUID       map[string][]uint32
+	tripIdxByRouteSName map[string][]uint32
+	parentsByChild      map[string]string
+	childrenByParent    map[string][]string
+	rawSIDByClean       map[string]string
+	shapesIndex         map[string][][2]float64
+	shapesByType        map[types.RouteType][]ShapeEntry
+	routesByID          map[string]types.Route
+	StopTimesCount      int
 }
-
 
 func StartEngine() Engine {
 	var e Engine
 	e.disruptionsMu = &sync.RWMutex{}
+	e.delaysMu = &sync.RWMutex{}
+	e.stopMonCache = newStopMonitoringCache()
 	e.parentsByChild = make(map[string]string)
 	e.childrenByParent = make(map[string][]string)
 	e.rawSIDByClean = make(map[string]string)
@@ -44,15 +55,47 @@ func StartEngine() Engine {
 		log.Fatal(err)
 	}
 	e.Net = *net
+	net = nil
+	e.StopTimesCount = len(e.Net.StopTimes)
 
-	for _, s := range e.Net.Stops {
-		clean := utils.IdRemoveIDFMPrefix(s.SID)
+	utils.EnrichRoutesWithVehicles(e.Net.Routes)
+	utils.EnrichTripsHeadsignWithTerminus(&e.Net)
+
+	internPool := make(map[string]string, 65536)
+	intern := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		if v, ok := internPool[s]; ok {
+			return v
+		}
+		internPool[s] = s
+		return s
+	}
+
+	for i := range e.Net.Routes {
+		r := &e.Net.Routes[i]
+		r.RID = intern(r.RID)
+		r.AgencyID = intern(r.AgencyID)
+		r.Color = intern(r.Color)
+		r.TColor = intern(r.TColor)
+		r.Picto = intern(r.Picto)
+		r.VehicleImage = intern(r.VehicleImage)
+		r.VehicleCarriage = intern(r.VehicleCarriage)
+	}
+	e.routesByID = utils.IndexRoutesByID(e.Net.Routes)
+
+	for i := range e.Net.Stops {
+		s := &e.Net.Stops[i]
+		s.SID = intern(s.SID)
+		s.ZoneId = intern(s.ZoneId)
+		s.ParentStation = intern(s.ParentStation)
+		clean := intern(utils.IdRemoveIDFMPrefix(s.SID))
 		e.rawSIDByClean[clean] = s.SID
 		e.rawSIDByClean[s.SID] = s.SID
-		e.rawSIDByClean["IDFM:"+clean] = s.SID
 	}
 	for _, ps := range e.Net.ParentsStations {
-		clean := utils.IdRemoveIDFMPrefix(ps.PID)
+		clean := intern(utils.IdRemoveIDFMPrefix(ps.PID))
 		if _, ok := e.rawSIDByClean[clean]; !ok {
 			e.rawSIDByClean[clean] = ps.PID
 		}
@@ -67,46 +110,72 @@ func StartEngine() Engine {
 
 	for i := range e.Net.ParentsStations {
 		p := &e.Net.ParentsStations[i]
-		p.PID = utils.IdRemoveIDFMPrefix(p.PID)
+		p.PID = intern(utils.IdRemoveIDFMPrefix(p.PID))
 		for j := range p.ChildrenStops {
-			p.ChildrenStops[j] = utils.IdRemoveIDFMPrefix(p.ChildrenStops[j])
+			p.ChildrenStops[j] = intern(utils.IdRemoveIDFMPrefix(p.ChildrenStops[j]))
 		}
+		p.ChildrenStops = slices.Clip(p.ChildrenStops)
 		for j := range p.Routes {
-			p.Routes[j].RID = utils.IdRemoveIDFMPrefix(p.Routes[j].RID)
+			r := &p.Routes[j]
+			r.RID = intern(utils.IdRemoveIDFMPrefix(r.RID))
+			r.Name = intern(r.Name)
+			r.Color = intern(r.Color)
+			r.Picto = intern(r.Picto)
 		}
+		p.Routes = slices.Clip(p.Routes)
 	}
 
 	for _, p := range e.Net.ParentsStations {
-		cleanPID := utils.IdRemoveIDFMPrefix(p.PID)
+		cleanPID := p.PID
 		e.childrenByParent[cleanPID] = p.ChildrenStops
 		for _, c := range p.ChildrenStops {
-			e.parentsByChild[utils.IdRemoveIDFMPrefix(c)] = cleanPID
+			e.parentsByChild[c] = cleanPID
 		}
 	}
 	for _, s := range e.Net.Stops {
-		cleanSID := utils.IdRemoveIDFMPrefix(s.SID)
-		cleanPID := utils.IdRemoveIDFMPrefix(s.ParentStation)
+		cleanSID := intern(utils.IdRemoveIDFMPrefix(s.SID))
+		cleanPID := intern(utils.IdRemoveIDFMPrefix(s.ParentStation))
 		if cleanPID != "" {
 			e.parentsByChild[cleanSID] = cleanPID
 			e.childrenByParent[cleanPID] = append(e.childrenByParent[cleanPID], cleanSID)
 		}
 	}
+	for k, v := range e.childrenByParent {
+		e.childrenByParent[k] = slices.Clip(v)
+	}
+
+	for i := range e.Net.PositionsInTrain {
+		p := &e.Net.PositionsInTrain[i]
+		p.FromSID = intern(p.FromSID)
+		p.ToSID = intern(p.ToSID)
+		p.RID = intern(p.RID)
+	}
 
 	extra, err := utils.LoadExtra()
 	if err == nil && extra != nil {
 		e.Extras = *extra
+		extra = nil
+	}
+
+	for i := range e.Extras.BikeParkings {
+		e.Extras.BikeParkings[i].Name = intern(e.Extras.BikeParkings[i].Name)
 	}
 
 	e.shapesIndex = make(map[string][][2]float64, 15000)
 	for _, s := range e.Extras.Shapes {
-		e.shapesIndex[s.ShapeID] = append(e.shapesIndex[s.ShapeID], [2]float64{s.Lat, s.Lon})
+		sid := intern(s.ShapeID)
+		e.shapesIndex[sid] = append(e.shapesIndex[sid], [2]float64{s.Lat, s.Lon})
 	}
 	for id, pts := range e.shapesIndex {
-		clean := utils.IdRemoveIDFMPrefix(id)
+		pts = slices.Clip(pts)
+		e.shapesIndex[id] = pts
+		clean := intern(utils.IdRemoveIDFMPrefix(id))
 		if clean != id {
 			e.shapesIndex[clean] = pts
 		}
 	}
+
+	e.Extras.Shapes = nil
 
 	e.shapesByType = make(map[types.RouteType][]ShapeEntry)
 	for id, pts := range e.shapesIndex {
@@ -161,8 +230,6 @@ func StartEngine() Engine {
 		}
 	}
 
-
-
 	if len(e.Net.Trips) > 0 && e.Net.Trips[0].ShapeID == "" {
 		if mapping, err := utils.LoadTripShapeMapping("data/processed/trips.txt"); err == nil {
 			for i := range e.Net.Trips {
@@ -184,21 +251,65 @@ func StartEngine() Engine {
 	}
 
 	e.CalendarIndex = utils.NewCalendarIndex(e.Extras.Calendars, e.Extras.CalendarDates)
-	for _, t := range e.Net.Trips {
+
+	e.Extras.Agencies = nil
+	e.Extras.Calendars = nil
+	e.Extras.CalendarDates = nil
+	e.Extras.Pathways = nil
+	e.Extras.Attributions = nil
+	e.Extras.BookingRules = nil
+	e.Extras.ObjectCodesExtension = nil
+	e.Extras.TicketingDeepLinks = nil
+
+	for i := range e.Net.Trips {
+		t := &e.Net.Trips[i]
+		t.RID = intern(t.RID)
+		t.ServiceID = intern(t.ServiceID)
+		t.Headsign = intern(t.Headsign)
+		t.SName = intern(t.SName)
+		t.ShapeID = intern(t.ShapeID)
 		if t.ServiceID != "" {
 			e.CalendarIndex.GetOrRegisterService(t.ServiceID)
 		}
 	}
+	internPool = nil
 
-	e.Graph = utils.BuildGraph(net, e.CalendarIndex)
+	e.Graph = utils.BuildGraph(&e.Net, e.CalendarIndex)
+
+	e.Net.StopTimes = nil
+	e.Net.Transfers = nil
+	runtime.GC()
+
 	e.ReverseGraph = utils.BuildReverseGraph(e.Graph)
+	e.buildTripLookupIndices()
+	runtime.GC()
+	debug.FreeOSMemory()
 
-	e.FetchDisruptions()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		e.FetchDisruptions()
+	}()
+	go func() {
+		defer wg.Done()
+		e.FetchDelays()
+	}()
+	wg.Wait()
+
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 			e.FetchDisruptions()
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			e.FetchDelays()
 		}
 	}()
 
@@ -272,4 +383,8 @@ func (e *Engine) GetReverseEdgesForStop(id string) []types.Edge {
 		return edges
 	}
 	return nil
+}
+
+func (e *Engine) GetShapesIndex() map[string][][2]float64 {
+	return e.shapesIndex
 }

@@ -73,6 +73,11 @@ data class TripLeg(
     @SerializedName("to_lon") val toLon: Double = 0.0,
     @SerializedName("departure_time") val departureTime: String,
     @SerializedName("arrival_time") val arrivalTime: String,
+    @SerializedName("scheduled_departure_time") val scheduledDepartureTime: String? = null,
+    @SerializedName("scheduled_arrival_time") val scheduledArrivalTime: String? = null,
+    @SerializedName("departure_delay_sec") val departureDelaySec: Int = 0,
+    @SerializedName("arrival_delay_sec") val arrivalDelaySec: Int = 0,
+    @SerializedName("is_delayed") val isDelayed: Boolean = false,
     @SerializedName("duration_sec") val durationSec: Int,
     @SerializedName("distance_km") val distanceKm: Double = 0.0,
 
@@ -85,6 +90,10 @@ data class TripLeg(
     @SerializedName("wheelchair") val wheelchair: Accessibility = Accessibility.UNKNOWN,
     @SerializedName("bikes_allowed") val bikesAllowed: Accessibility = Accessibility.UNKNOWN,
 
+    @SerializedName("departure_platform") val departurePlatform: String? = null,
+    @SerializedName("arrival_platform") val arrivalPlatform: String? = null,
+    @SerializedName("is_long_train") val isLongTrain: Boolean? = null,
+
     @SerializedName("coordinates") val coordinates: List<List<Double>>? = null
 )
 
@@ -95,14 +104,23 @@ data class RouteSummary(
     @SerializedName("route_type") val routeType: RouteType,
     @SerializedName("color") val color: String,
     @SerializedName("text_color") val textColor: String,
-    @SerializedName("picto") val picto: String? = null
-)
+    @SerializedName("picto") val picto: String? = null,
+    @SerializedName("vehicle_image") val vehicleImage: String? = null,
+    @SerializedName("vehicle_carriage") val vehicleCarriage: String? = null
+) {
+    val vehiculeImageUrl: String?
+        get() = if (!vehicleImage.isNullOrEmpty()) "https://omaps-calc.orionhost.app/images/${vehicleImage}" else null
+}
 
 data class IntermediateStop(
     @SerializedName("sid") val sid: String,
     @SerializedName("name") val name: String,
     @SerializedName("arrival_time") val arrivalTime: String,
     @SerializedName("departure_time") val departureTime: String,
+    @SerializedName("scheduled_arrival_time") val scheduledArrivalTime: String? = null,
+    @SerializedName("scheduled_departure_time") val scheduledDepartureTime: String? = null,
+    @SerializedName("delay_sec") val delaySec: Int = 0,
+    @SerializedName("is_delayed") val isDelayed: Boolean = false,
     @SerializedName("is_blocked") val isBlocked: Boolean = false,
     @SerializedName("lat") val lat: Double = 0.0,
     @SerializedName("lon") val lon: Double = 0.0
@@ -118,7 +136,8 @@ data class TripPositionInTrain(
 enum class LegType(val value: Int) {
     WALK(0),
     TRANSIT(1),
-    BIKE(2);
+    BIKE(2),
+    TRANSFERT(3);
 
     companion object {
         fun fromValue(value: Int): LegType = entries.firstOrNull { it.value == value } ?: WALK

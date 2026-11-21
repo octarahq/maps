@@ -29,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,19 +47,24 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import com.octara.maps.navigation.LocalRouter
 import com.octara.maps.ui.components.AppSearchBar
+import com.octara.maps.ui.components.InteractiveSheetDragHandle
+import com.octara.maps.ui.components.bottomSheetContentScroll
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.managers.FavoriteStop
 import com.octara.maps.navigation.Screen
+import com.octara.maps.types.FavoriteDepartureInfo
 import com.octara.maps.types.Route
 import com.octara.maps.ui.components.RouteIcon
 
@@ -75,17 +81,19 @@ private fun formatDepartureTime(dep: Number): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransitMapSheetContent(
     onSearchClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sheetState: SheetState? = null
 ) {
     val router = LocalRouter.current
 
     val favoritesManager = remember { FavoritesStopsManager() }
     val favoriteStops by favoritesManager.favoriteStops.collectAsState()
     var favoritesStopsNextDepartures by remember {
-        mutableStateOf<Map<Pair<String, String>, Map<String, List<Int>>>>(emptyMap())
+        mutableStateOf<Map<Pair<String, String>, Map<String, List<FavoriteDepartureInfo>>>>(emptyMap())
     }
 
     LaunchedEffect(favoriteStops) {
@@ -93,9 +101,9 @@ fun TransitMapSheetContent(
             if (favoriteStops.isNotEmpty()) {
                 try {
                     val pairs = favoriteStops.map { it.stopId to it.routeId }
-                    favoritesStopsNextDepartures = com.octara.maps.utils.Api().getNextDeparturesOfMultipleStops(pairs)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                    favoritesStopsNextDepartures =
+                        com.octara.maps.utils.Api().getNextDepartureDetailsOfMultipleStops(pairs)
+                } catch (_: Exception) {
                 }
             } else {
                 favoritesStopsNextDepartures = emptyMap()
@@ -104,10 +112,16 @@ fun TransitMapSheetContent(
         }
     }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .bottomSheetContentScroll(
+                scrollState = scrollState,
+                sheetState = sheetState
+            )
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -145,7 +159,7 @@ fun TransitMapSheetContent(
 fun FavoritesStopsNextDepartures(
     modifier: Modifier = Modifier,
     favoriteStop: FavoriteStop,
-    nextDepartures: Map<String, List<Int>>,
+    nextDepartures: Map<String, List<FavoriteDepartureInfo>>,
     onClick: () -> Unit = {}
 ) {
     Card(
@@ -227,27 +241,68 @@ fun FavoritesStopsNextDepartures(
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = if (headsign.isNotEmpty()) headsign else "Direction inconnue",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    val waitText = formatDepartureTime(dep)
-                    val isImminent = (dep.toFloat() / 60.0f) <= 1.0f
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = if (headsign.isNotEmpty()) headsign else "Direction inconnue",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val delayed = dep.is_delayed || dep.delay_sec >= 60
+                        if (delayed) {
+                            val delayMins =
+                                if (dep.delay_minutes > 0) dep.delay_minutes else ((dep.delay_sec + 30) / 60).coerceAtLeast(
+                                    1
+                                )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "En retard (+$delayMins min)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFD84315)
+                                )
+                                if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
+                                    Text(
+                                        text = dep.time_string,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD84315)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    val waitText = formatDepartureTime(dep.wait_sec)
+                    val isImminent = (dep.wait_sec.toFloat() / 60.0f) <= 1.0f
+                    val isDelayed = dep.is_delayed || dep.delay_sec >= 60
+                    val badgeBgColor = when {
+                        isDelayed -> Color(0xFFFFF3E0)
+                        isImminent -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                    val badgeTextColor = when {
+                        isDelayed -> Color(0xFFD84315)
+                        isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        color = badgeBgColor,
                         modifier = Modifier.padding(start = 4.dp)
                     ) {
                         Text(
                             text = waitText,
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isImminent) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (isImminent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (isImminent || isDelayed) FontWeight.Bold else FontWeight.SemiBold,
+                            color = badgeTextColor,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -310,30 +365,36 @@ fun TransitMapScreen(
         }
     }
 
-    BottomSheetScaffold(
-        scaffoldState = scaffoldState,
-        sheetShape = AppDimensions.BottomSheetShape,
-        sheetPeekHeight = sheetPeekHeight,
-        sheetShadowElevation = AppDimensions.BottomSheetElevation,
-        sheetContent = {
-            key(currentScreen) {
-                currentScreen.SheetContent(
-                    sheetState = sheetState,
-                    onClose = handleClose,
-                    onUpdateTarget = { coords, title ->
-                        if (targetCoords == null) {
-                            targetCoords = coords
-                            targetTitle = title
+    Box(modifier = modifier.fillMaxSize()) {
+        BottomSheetScaffold(
+            scaffoldState = scaffoldState,
+            sheetShape = AppDimensions.BottomSheetShape,
+            sheetPeekHeight = sheetPeekHeight,
+            sheetShadowElevation = AppDimensions.BottomSheetElevation,
+            sheetSwipeEnabled = false,
+            sheetDragHandle = {
+                InteractiveSheetDragHandle(sheetState = sheetState)
+            },
+            sheetContent = {
+                key(currentScreen) {
+                    currentScreen.SheetContent(
+                        sheetState = sheetState,
+                        onClose = handleClose,
+                        onUpdateTarget = { coords, title ->
+                            if (targetCoords == null) {
+                                targetCoords = coords
+                                targetTitle = title
+                            }
                         }
-                    }
-                )
-            }
-        },
-        modifier = modifier.fillMaxSize()
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        ) {
             TransitMap(
                 modifier = Modifier.fillMaxSize(),
+                currentScreen = currentScreen,
+                selectedStopDetails = router.selectedStopDetails,
                 cameraTarget = targetCoords,
                 cameraZoom = currentScreen.cameraZoom,
                 bottomPaddingPx = sheetPeekHeightPx,
@@ -341,31 +402,32 @@ fun TransitMapScreen(
                 markerTitle = targetTitle,
                 activeJourney = router.activeJourney
             )
+        }
 
-            AnimatedVisibility(
-                visible = currentScreen.showBackButton,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, top = 8.dp)
-                    .align(Alignment.TopStart)
+        AnimatedVisibility(
+            visible = currentScreen.showBackButton,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .zIndex(100f)
+                .statusBarsPadding()
+                .padding(start = 16.dp, top = 8.dp)
+                .align(Alignment.TopStart)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                shadowElevation = 6.dp
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    shadowElevation = 4.dp
+                IconButton(
+                    onClick = handleClose,
+                    modifier = Modifier.size(42.dp)
                 ) {
-                    IconButton(
-                        onClick = handleClose,
-                        modifier = Modifier.size(42.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Retour",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Retour",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }

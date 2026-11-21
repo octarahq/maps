@@ -58,10 +58,18 @@ import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,9 +84,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +107,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.navigation.Screen
 import com.octara.maps.types.JourneyQuery
 import com.octara.maps.types.JourneyResponse
 import com.octara.maps.types.ParsedTrip
@@ -106,10 +117,23 @@ import com.octara.maps.types.TimeType
 import com.octara.maps.types.Route
 import com.octara.maps.types.Accessibility
 import com.octara.maps.types.RouteType
+import com.octara.maps.types.TrainPosition
+import com.octara.maps.types.TripPositionInTrain
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
 import com.octara.maps.utils.api
+import com.octara.maps.ui.components.JourneyLegItem
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.PositionPicker
+import com.octara.maps.ui.components.bottomSheetContentScroll
+import com.octara.maps.ui.components.formatTimeString
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.graphicsLayer
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -119,8 +143,10 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JourneyPlannerSheetContent(
-    toStopId: String,
+    toStopId: String = "",
     toStopName: String,
+    toLat: Double? = null,
+    toLon: Double? = null,
     modifier: Modifier = Modifier,
     sheetState: SheetState? = null,
     onClose: (() -> Unit)? = null
@@ -157,7 +183,8 @@ fun JourneyPlannerSheetContent(
     }
 
     var selectedAllowedModes by remember { mutableStateOf(initialSavedModes) }
-    var currentCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val gpsLocation by LocationManager.currentLocation.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
 
     val initialWheelchair = remember { prefs.getBoolean("preferred_wheelchair", false) }
     val initialWithBike = remember { prefs.getBoolean("preferred_with_bike", false) }
@@ -166,7 +193,11 @@ fun JourneyPlannerSheetContent(
         mutableStateOf(
             JourneyQuery(
                 from = Position.CurrentLocation,
-                to = Position.ByStop(toStopId),
+                to = if (toLat != null && toLon != null) {
+                    Position.Coordinates(toLat, toLon)
+                } else {
+                    Position.ByStop(toStopId)
+                },
                 time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
                 timeType = TimeType.DEPARTURE,
                 allowedModes = if (selectedAllowedModes.size == allRouteModes.size) null else selectedAllowedModes.toList(),
@@ -178,31 +209,46 @@ fun JourneyPlannerSheetContent(
     }
 
     LaunchedEffect(Unit) {
-        val loc = LocationHelper(context).getCurrentLocation()
-        if (loc != null) {
-            val coords = Pair(loc.first.toDouble(), loc.second.toDouble())
-            currentCoords = coords
-            journeyConfig = journeyConfig.copy(currentGps = coords)
+        LocationManager.fetchCurrentLocation(context)
+    }
+
+    LaunchedEffect(gpsLocation) {
+        val gps = gpsLocation
+        if (gps != null) {
+            val coords = Pair(gps.first.toDouble(), gps.second.toDouble())
+            val prev = journeyConfig.currentGps
+            val shouldUpdate = if (prev == null) {
+                true
+            } else {
+                val res = FloatArray(1)
+                android.location.Location.distanceBetween(prev.first, prev.second, coords.first, coords.second, res)
+                res[0] > 120f
+            }
+            if (shouldUpdate) {
+                journeyConfig = journeyConfig.copy(currentGps = coords)
+            }
         } else {
-            val fallback = Pair(48.8566, 2.3522)
-            currentCoords = fallback
-            journeyConfig = journeyConfig.copy(currentGps = fallback)
+            journeyConfig = journeyConfig.copy(currentGps = null)
         }
     }
 
     var journeys by remember { mutableStateOf(JourneyResponse()) }
     var isLoading by remember { mutableStateOf(false) }
 
+    val needsGps = (journeyConfig.from is Position.CurrentLocation) || (journeyConfig.to is Position.CurrentLocation)
+    val isGpsMissing = needsGps && journeyConfig.currentGps == null
+
     LaunchedEffect(journeyConfig) {
-        if (journeyConfig.currentGps == null) {
+        if (needsGps && journeyConfig.currentGps == null) {
+            journeys = JourneyResponse()
+            isLoading = false
             return@LaunchedEffect
         }
         isLoading = true
         journeys = JourneyResponse()
         try {
             journeys = api.getJourney(query = journeyConfig)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
         } finally {
             isLoading = false
         }
@@ -291,18 +337,7 @@ fun JourneyPlannerSheetContent(
         }
     }
 
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -15f && !isFullscreen && sheetState?.currentValue == SheetValue.Expanded) {
-                    isFullscreen = true
-                } else if (available.y > 15f && isFullscreen) {
-                    isFullscreen = false
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    val scrollState = rememberScrollState()
 
     val screenHeight = configuration.screenHeightDp.dp
     val targetHeight = if (isFullscreen) screenHeight else (screenHeight * 0.82f)
@@ -321,17 +356,38 @@ fun JourneyPlannerSheetContent(
             .height(animatedHeight)
             .then(if (isFullscreen) Modifier.statusBarsPadding() else Modifier)
             .navigationBarsPadding()
-            .nestedScroll(nestedScrollConnection)
-            .verticalScroll(rememberScrollState())
+            .bottomSheetContentScroll(
+                scrollState = scrollState,
+                sheetState = sheetState,
+                onBoundaryDragUp = {
+                    if (!isFullscreen && sheetState?.currentValue == SheetValue.Expanded) {
+                        isFullscreen = true
+                    }
+                },
+                onBoundaryDragDown = if (isFullscreen) {
+                    { isFullscreen = false }
+                } else {
+                    null
+                }
+            )
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         val fromIsCurrentLocation = journeyConfig.from is Position.CurrentLocation
-        val fromText = if (fromIsCurrentLocation) "Ma position" else currentFromStopName
-        val fromColor = if (fromIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
+        val fromText = if (fromIsCurrentLocation) {
+            if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
+        } else currentFromStopName
+        val fromColor = if (fromIsCurrentLocation) {
+            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
+        } else Color(0xFF34C759)
 
         val toIsCurrentLocation = journeyConfig.to is Position.CurrentLocation
-        val toText = if (toIsCurrentLocation) "Ma position" else currentToStopName
-        val toColor = if (toIsCurrentLocation) Color(0xFF007AFF) else Color(0xFF34C759)
+        val toText = if (toIsCurrentLocation) {
+            if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
+        } else currentToStopName
+        val toColor = if (toIsCurrentLocation) {
+            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
+        } else Color(0xFF34C759)
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -824,29 +880,264 @@ fun JourneyPlannerSheetContent(
             color = Color(0xFFE0E0E0)
         )
 
-        val journey = journeys.journeys[selectedMode] ?: journeys.journeys["comfort"]
+        val journey =
+            journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
 
         LaunchedEffect(journey) {
             router.activeJourney = journey
         }
 
-        val duration = when {
-            isLoading -> "Recherche en cours..."
-            journey == null -> if (journeys.journeys.isEmpty()) "Aucun itinéraire trouvé" else "Non disponible"
-            journey.durationSec < 3600 -> "${journey.durationSec / 60}min"
-            else -> "${journey.durationSec / 3600}h ${(journey.durationSec % 3600) / 60}min"
-        }
+        if (isGpsMissing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Text(
+                            text = "Position GPS introuvable",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Impossible de récupérer votre position actuelle. Activez la localisation ou sélectionnez manuellement un point de départ.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    LocationManager.fetchCurrentLocation(context, forceRefresh = true)
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Réessayer la localisation",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        } else if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 36.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                    Text(
+                        text = "Recherche du meilleur itinéraire...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (journey == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (journeys.journeys.isEmpty()) Icons.Default.SearchOff else Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Text(
+                            text = if (journeys.journeys.isEmpty()) "Aucun itinéraire trouvé" else "Option non disponible",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (journeys.journeys.isEmpty()) {
+                                "Essayez de modifier vos critères ou les modes de transport autorisés."
+                            } else {
+                                "Ce mode de trajet n'a pas donné de résultat pour cet itinéraire."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            val durationText = when {
+                journey.durationSec < 3600 -> "${journey.durationSec / 60} min"
+                else -> {
+                    val h = journey.durationSec / 3600
+                    val m = (journey.durationSec % 3600) / 60
+                    if (m == 0) "${h}h" else "${h}h ${m}min"
+                }
+            }
 
-        Text(
-            text = duration,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
+            val depTimeStr = formatTimeString(journey.departureTime)
+            val arrTimeStr = formatTimeString(journey.arrivalTime)
 
-        for (leg in journey?.legs.orEmpty()) {
-            JourneyLegItem(leg = leg)
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Durée estimée",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = durationText,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                if (depTimeStr.isNotBlank() && arrTimeStr.isNotBlank()) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Horaires",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "$depTimeStr → $arrTimeStr",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            if (journeyConfig.from == Position.CurrentLocation) {
+                Button(
+                    onClick = {
+                        router.navigateTo(Screen.Navigation(trip = journey))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Démarrer l'itinéraire",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Itinéraire",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            journey.legs.forEachIndexed { index, leg ->
+                JourneyLegItem(
+                    leg = leg,
+                    prevLeg = journey.legs.getOrNull(index - 1),
+                    nextLeg = journey.legs.getOrNull(index + 1),
+                    isFirstWalk = index == 0
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
     }
 
@@ -871,681 +1162,6 @@ fun JourneyPlannerSheetContent(
                     activePickerTarget = null
                 }
             )
-        }
-    }
-}
-
-@Composable
-fun JourneyLegItem(leg: TripLeg) {
-    if (leg.type == com.octara.maps.types.LegType.TRANSIT) {
-        TransitLegItem(leg = leg)
-    } else if (leg.type == com.octara.maps.types.LegType.BIKE) {
-        WalkingLegItem(leg = leg)
-    } else {
-        WalkingLegItem(leg = leg)
-    }
-}
-
-fun distanceToString(distanceKm: Double): String {
-    return if (distanceKm < 1) {
-        "${(distanceKm * 1000).toInt()} m"
-    } else {
-        String.format("%.1f km", distanceKm)
-    }
-}
-
-fun formatTimeString(time: String?): String {
-    if (time.isNullOrBlank()) return ""
-    val match = Regex("(?:^|T|\\s)(\\d{1,2}):(\\d{2})").find(time)
-    return match?.let {
-        val h = it.groupValues[1].toInt()
-        val m = it.groupValues[2]
-        "${h}h$m"
-    } ?: ""
-}
-
-@Composable
-fun WalkingLegItem(leg: TripLeg) {
-    val tColor = Color(0xFF757575)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Box(
-            modifier = Modifier.width(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.height(55.dp)
-            ) {
-                repeat(4) {
-                    Box(
-                        modifier = Modifier
-                            .width(6.dp)
-                            .height(10.dp)
-                            .background(tColor, RoundedCornerShape(3.dp))
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = "Marcher durant ${distanceToString(leg.distanceKm)}",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Medium,
-            color = tColor,
-            modifier = Modifier.padding(start = 12.dp)
-        )
-    }
-}
-
-@Composable
-fun TransitLegItem(leg: TripLeg) {
-    val route = leg.route
-    val rgb = route?.color?.removePrefix("#")?.toLongOrNull(16)?.toInt()
-        ?: 0x0071BD
-    val tColor = Color(rgb or 0xFF000000.toInt())
-
-    data class StopInfo(
-        val name: String,
-        val arrivalTime: String? = null,
-        val headsign: String? = null,
-        val wheelchair: Accessibility = Accessibility.UNKNOWN,
-        val bikesAllowed: Accessibility = Accessibility.UNKNOWN
-    )
-
-    var stops: List<StopInfo> = listOf(
-        StopInfo(
-            name = leg.fromStopName,
-            headsign = route?.longName,
-            arrivalTime = leg.departureTime,
-            wheelchair = leg.wheelchair,
-            bikesAllowed = leg.bikesAllowed
-        ),
-        StopInfo(name = leg.toStopName, arrivalTime = leg.arrivalTime)
-    )
-
-    val intermediateStops = leg.intermediateStops ?: emptyList()
-    var isIntermediateExpanded by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        val barWidth = 16.dp
-        val iconHeight = 24.dp
-        val iconLeftOffset = (barWidth - iconHeight) / 2
-
-        if (route != null) {
-            Box(
-                modifier = Modifier
-                    .offset(x = iconLeftOffset)
-                    .padding(bottom = 6.dp)
-            ) {
-                RouteIcon(
-                    route = Route(
-                        id = route.rid,
-                        picto = route.picto,
-                        color = route.color,
-                        tcolor = route.textColor,
-                        short_name = route.shortName,
-                        long_name = route.longName,
-                        type = route.routeType
-                    ),
-                    modifier = Modifier.height(iconHeight)
-                )
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-        ) {
-            Canvas(
-                modifier = Modifier
-                    .width(16.dp)
-                    .fillMaxHeight()
-            ) {
-                val pillWidth = size.width
-                val radius = pillWidth / 2f
-                val holeRadius = radius * 0.52f
-                val centerY = size.height / 2f
-
-                val topY = (centerY - radius).coerceAtLeast(0f)
-                val bottomY = size.height
-
-                val path = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            left = 0f,
-                            top = topY,
-                            right = pillWidth,
-                            bottom = bottomY,
-                            topLeftCornerRadius = CornerRadius(radius, radius),
-                            topRightCornerRadius = CornerRadius(radius, radius),
-                            bottomRightCornerRadius = CornerRadius.Zero,
-                            bottomLeftCornerRadius = CornerRadius.Zero
-                        )
-                    )
-                }
-                drawPath(path, color = tColor)
-
-                drawCircle(
-                    color = Color.White,
-                    radius = holeRadius,
-                    center = Offset(x = radius, y = centerY)
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = leg.fromStopName,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = tColor,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                val timeStr = formatTimeString(leg.departureTime)
-                if (timeStr.isNotBlank()) {
-                    Text(
-                        text = timeStr,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF555555),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
-        }
-
-        if (route?.longName != null) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(16.dp)
-                        .fillMaxHeight()
-                        .background(tColor)
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(start = 12.dp, top = 2.dp, bottom = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = route.longName,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = tColor
-                    )
-                }
-            }
-        }
-
-        val hasAccessibilityInfo = leg.wheelchair != Accessibility.UNKNOWN || leg.bikesAllowed != Accessibility.UNKNOWN
-        if (hasAccessibilityInfo) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(16.dp)
-                        .fillMaxHeight()
-                        .background(tColor)
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, top = 2.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (leg.wheelchair == Accessibility.YES) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Accessible,
-                            contentDescription = "Accessible aux fauteuils roulants",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (leg.wheelchair == Accessibility.NO) {
-                        Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Accessible,
-                                contentDescription = "Non accessible aux fauteuils roulants",
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.75f)
-                            )
-                            val strokeColor = MaterialTheme.colorScheme.error
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                drawLine(
-                                    color = strokeColor,
-                                    start = Offset(0f, 0f),
-                                    end = Offset(size.width, size.height),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                            }
-                        }
-                    }
-
-                    if (leg.bikesAllowed == Accessibility.YES) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
-                            contentDescription = "Vélos autorisés",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (leg.bikesAllowed == Accessibility.NO) {
-                        Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
-                                contentDescription = "Vélos non autorisés",
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.75f)
-                            )
-                            val strokeColor = MaterialTheme.colorScheme.error
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                drawLine(
-                                    color = strokeColor,
-                                    start = Offset(0f, 0f),
-                                    end = Offset(size.width, size.height),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (intermediateStops.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .width(16.dp)
-                    .height(14.dp)
-                    .background(tColor)
-            )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-                    .clickable { isIntermediateExpanded = !isIntermediateExpanded }
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .width(16.dp)
-                        .fillMaxHeight()
-                ) {
-                    val pillWidth = size.width
-                    val radius = pillWidth / 2f
-                    val holeRadius = radius * 0.52f
-                    val centerY = size.height / 2f
-
-                    drawRect(
-                        color = tColor,
-                        topLeft = Offset(0f, 0f),
-                        size = androidx.compose.ui.geometry.Size(pillWidth, size.height)
-                    )
-
-                    if (!isIntermediateExpanded) {
-                        drawCircle(
-                            color = Color.White,
-                            radius = holeRadius,
-                            center = Offset(x = radius, y = centerY)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isIntermediateExpanded) {
-                            "Masquer les arrêts intermédiaires (${intermediateStops.size})"
-                        } else {
-                            "Voir les arrêts intermédiaires (${intermediateStops.size})"
-                        },
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = tColor,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = if (isIntermediateExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = tColor
-                    )
-                }
-            }
-
-            if (isIntermediateExpanded) {
-                val hasBlocked = intermediateStops.any { it.isBlocked }
-
-                for (idx in intermediateStops.indices) {
-                    val stop = intermediateStops[idx]
-                    val isBlocked = stop.isBlocked
-
-                    val isFirstBlocked = isBlocked && (idx == 0 || !intermediateStops[idx - 1].isBlocked)
-
-                    if (isFirstBlocked) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(28.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val barW = 16.dp.toPx()
-                                    drawRect(
-                                        color = tColor.copy(alpha = 0.25f),
-                                        topLeft = Offset(0f, 0f),
-                                        size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                    )
-                                    val detourX = 36.dp.toPx()
-                                    val path = Path().apply {
-                                        moveTo(barW / 2f, 0f)
-                                        cubicTo(
-                                            barW / 2f, size.height * 0.5f,
-                                            detourX, size.height * 0.5f,
-                                            detourX, size.height
-                                        )
-                                    }
-                                    drawPath(
-                                        path = path,
-                                        color = tColor,
-                                        style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                            width = barW,
-                                            cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(16.dp)
-                    ) {
-                        Canvas(
-                            modifier = Modifier
-                                .width(if (isBlocked) 44.dp else 16.dp)
-                                .fillMaxHeight()
-                        ) {
-                            val barW = 16.dp.toPx()
-                            if (isBlocked) {
-                                drawRect(
-                                    color = tColor.copy(alpha = 0.25f),
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-
-                                val detourX = 36.dp.toPx()
-                                drawRect(
-                                    color = tColor,
-                                    topLeft = Offset(detourX - (barW / 2f), 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-                            } else {
-                                drawRect(
-                                    color = tColor,
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min)
-                    ) {
-                        Canvas(
-                            modifier = Modifier
-                                .width(if (isBlocked) 44.dp else 16.dp)
-                                .fillMaxHeight()
-                        ) {
-                            val barW = 16.dp.toPx()
-                            val centerY = size.height / 2f
-
-                            if (isBlocked) {
-                                drawRect(
-                                    color = tColor.copy(alpha = 0.25f),
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-
-                                val detourX = 36.dp.toPx()
-                                drawRect(
-                                    color = tColor,
-                                    topLeft = Offset(detourX - (barW / 2f), 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-
-                                val crossCenter = Offset(barW / 2f, centerY)
-                                val crossRadius = 7.dp.toPx()
-                                val crossColor = Color(0xFFE53935)
-                                val crossStroke = 3.5.dp.toPx()
-
-                                drawLine(
-                                    color = crossColor,
-                                    start = Offset(crossCenter.x - crossRadius, crossCenter.y - crossRadius),
-                                    end = Offset(crossCenter.x + crossRadius, crossCenter.y + crossRadius),
-                                    strokeWidth = crossStroke,
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                )
-                                drawLine(
-                                    color = crossColor,
-                                    start = Offset(crossCenter.x + crossRadius, crossCenter.y - crossRadius),
-                                    end = Offset(crossCenter.x - crossRadius, crossCenter.y + crossRadius),
-                                    strokeWidth = crossStroke,
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                )
-                            } else {
-                                drawRect(
-                                    color = tColor,
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-                                val radius = barW / 2f
-                                val holeRadius = radius * 0.52f
-                                drawCircle(
-                                    color = Color.White,
-                                    radius = holeRadius,
-                                    center = Offset(radius, centerY)
-                                )
-                            }
-                        }
-
-                        val stopTextColor = if (isBlocked) tColor.copy(alpha = 0.65f) else tColor
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stop.name,
-                                fontSize = 16.sp,
-                                fontWeight = if (isBlocked) FontWeight.SemiBold else FontWeight.Medium,
-                                color = stopTextColor,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            val timeStr = formatTimeString(stop.arrivalTime.ifBlank { stop.departureTime })
-                            if (timeStr.isNotBlank() && !isBlocked) {
-                                Text(
-                                    text = timeStr,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF666666),
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    val isLastBlocked =
-                        isBlocked && (idx == intermediateStops.lastIndex || !intermediateStops[idx + 1].isBlocked)
-                    if (isLastBlocked) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(28.dp)
-                        ) {
-                            Canvas(
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .fillMaxHeight()
-                            ) {
-                                val barW = 16.dp.toPx()
-
-                                drawRect(
-                                    color = tColor.copy(alpha = 0.25f),
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(barW, size.height)
-                                )
-                                val detourX = 36.dp.toPx()
-                                val path = Path().apply {
-                                    moveTo(detourX, 0f)
-                                    cubicTo(
-                                        detourX, size.height * 0.5f,
-                                        barW / 2f, size.height * 0.5f,
-                                        barW / 2f, size.height
-                                    )
-                                }
-                                drawPath(
-                                    path = path,
-                                    color = tColor,
-                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                        width = barW,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .width(16.dp)
-                .height(20.dp)
-                .background(tColor)
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-        ) {
-            Canvas(
-                modifier = Modifier
-                    .width(16.dp)
-                    .fillMaxHeight()
-            ) {
-                val pillWidth = size.width
-                val radius = pillWidth / 2f
-                val holeRadius = radius * 0.52f
-                val centerY = size.height / 2f
-
-                val topY = 0f
-                val bottomY = (centerY + radius).coerceAtMost(size.height)
-
-                val path = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            left = 0f,
-                            top = topY,
-                            right = pillWidth,
-                            bottom = bottomY,
-                            topLeftCornerRadius = CornerRadius.Zero,
-                            topRightCornerRadius = CornerRadius.Zero,
-                            bottomRightCornerRadius = CornerRadius(radius, radius),
-                            bottomLeftCornerRadius = CornerRadius(radius, radius)
-                        )
-                    )
-                }
-                drawPath(path, color = tColor)
-
-                drawCircle(
-                    color = Color.White,
-                    radius = holeRadius,
-                    center = Offset(x = radius, y = centerY)
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = leg.toStopName,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = tColor,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                val timeStr = formatTimeString(leg.arrivalTime)
-                if (timeStr.isNotBlank()) {
-                    Text(
-                        text = timeStr,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF555555),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
         }
     }
 }

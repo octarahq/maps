@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,9 @@ import com.octara.maps.navigation.Router
 import com.octara.maps.navigation.Screen
 import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import com.octara.maps.ui.components.getStopIconResource
 
@@ -52,16 +56,14 @@ fun SearchScreen(
     val router = LocalRouter.current
     var query by remember { mutableStateOf("") }
     var stops by remember { mutableStateOf<List<com.octara.maps.types.ParentStop>>(emptyList()) }
+    var addresses by remember { mutableStateOf<List<com.octara.maps.utils.Api.AddressResult>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    var currentCoords by remember { mutableStateOf(Pair(48.8566f, 2.3522f)) }
+    val currentCoords by LocationManager.currentLocation.collectAsState()
 
     LaunchedEffect(Unit) {
-        val loc = LocationHelper(context).getCurrentLocation()
-        if (loc != null) {
-            currentCoords = loc
-        }
+        LocationManager.fetchCurrentLocation(context)
     }
 
     Surface(
@@ -93,20 +95,28 @@ fun SearchScreen(
                 if (query.length < 2) {
                     isLoading = false
                     stops = emptyList()
+                    addresses = emptyList()
                     return@LaunchedEffect
                 }
 
                 delay(300)
                 isLoading = true
                 try {
-                    val result = com.octara.maps.utils.Api().searchStopsByName(
-                        name = query,
-                        limit = 20,
-                        cpos = currentCoords
-                    )
-                    stops = result ?: emptyList()
+                    val api = com.octara.maps.utils.Api()
+                    val (stopsRes, addressesRes) = coroutineScope {
+                        val s = async {
+                            runCatching { api.searchStopsByName(name = query, limit = 15, cpos = currentCoords) }.getOrDefault(emptyList())
+                        }
+                        val a = async {
+                            runCatching { api.searchAddresses(query = query, limit = 10, cpos = currentCoords) }.getOrDefault(emptyList())
+                        }
+                        s.await() to a.await()
+                    }
+                    stops = stopsRes
+                    addresses = addressesRes
                 } catch (e: Exception) {
                     stops = emptyList()
+                    addresses = emptyList()
                 } finally {
                     isLoading = false
                 }
@@ -120,6 +130,9 @@ fun SearchScreen(
             ) {
                 items(stops) { stop ->
                     SearchResultItem(stop = stop, router = router)
+                }
+                items(addresses) { address ->
+                    AddressSearchResultItem(address = address, router = router)
                 }
             }
         }
@@ -167,5 +180,60 @@ fun SearchResultItem(
             style = MaterialTheme.typography.bodyLarge,
             modifier = ComposeModifier.padding(vertical = 8.dp)
         )
+    }
+}
+
+@Composable
+fun AddressSearchResultItem(
+    address: com.octara.maps.utils.Api.AddressResult,
+    router: Router = LocalRouter.current
+) {
+    Row(
+        modifier = ComposeModifier
+            .fillMaxWidth()
+            .clickable {
+                router.navigateTo(
+                    Screen.JourneyPlanner(
+                        toStopName = address.name,
+                        toLat = address.lat.toDouble(),
+                        toLon = address.lon.toDouble()
+                    ),
+                    popCurrent = true
+                )
+            }
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = ComposeModifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.LocationOn,
+                contentDescription = "Adresse",
+                tint = MaterialTheme.colorScheme.secondary,
+            )
+        }
+        Column {
+            Text(
+                text = address.name,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            val subtitle = listOfNotNull(
+                address.postcode?.takeIf { it.isNotBlank() },
+                address.city?.takeIf { it.isNotBlank() }
+            ).joinToString(" ").ifBlank { address.label }
+            if (subtitle.isNotBlank() && subtitle != address.name) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

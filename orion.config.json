@@ -3,10 +3,14 @@
   "deploy": {
     "clean": true,
     "exclude": [
-      "data",
-      "images",
+      "data/processed/**",
+      "data/raw/**",
+      "data/backup/**",
+      "./images",
       ".vscode",
-      "android"
+      "android",
+      "/tmp",
+      "data/osm/**"
     ]
   }
 }

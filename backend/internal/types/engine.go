@@ -33,16 +33,24 @@ type RoutesToCalculateType struct {
 }
 
 type DepartureInfo struct {
-	RID         string    `json:"route_id"`
-	RName       string    `json:"route_name"`
-	RColor      string    `json:"color"`
-	RType       RouteType `json:"type"`
-	Picto       string    `json:"picto,omitempty"`
-	Headsign    string    `json:"headsign"`
-	DepSec      int       `json:"dep_sec"`
-	Time        time.Time `json:"time"`
-	TimeString  string    `json:"time_string"`
-	WaitMinutes float64   `json:"wait_minutes"`
+	Time                time.Time  `json:"time"`
+	ScheduledTime       *time.Time `json:"scheduled_time,omitempty"`
+	IsLongTrain         *bool      `json:"is_long_train,omitempty"`
+	RID                 string     `json:"route_id"`
+	RName               string     `json:"route_name"`
+	RColor              string     `json:"color"`
+	Picto               string     `json:"picto,omitempty"`
+	Headsign            string     `json:"headsign"`
+	TimeString          string     `json:"time_string"`
+	ScheduledTimeString string     `json:"scheduled_time_string,omitempty"`
+	Platform            string     `json:"platform,omitempty"`
+	WaitMinutes         float64    `json:"wait_minutes"`
+	DepSec              int        `json:"dep_sec"`
+	ScheduledDepSec     int        `json:"scheduled_dep_sec,omitempty"`
+	DelaySec            int        `json:"delay_sec"`
+	DelayMinutes        int        `json:"delay_minutes"`
+	RType               RouteType  `json:"type"`
+	IsDelayed           bool       `json:"is_delayed"`
 }
 
 type DisruptionCause uint8
@@ -69,14 +77,14 @@ type DisruptionPeriod struct {
 }
 
 type Disruption struct {
-	DID              string
 	Periods          []DisruptionPeriod
-	Cause            DisruptionCause
-	Severity         DisruptionSeverity
+	ImpactedSections []DisruptionImpactedSections
+	DID              string
 	Title            string
 	Message          string
 	SMessage         string
-	ImpactedSections []DisruptionImpactedSections
+	Cause            DisruptionCause
+	Severity         DisruptionSeverity
 }
 
 type DisruptionImpactedSections struct {

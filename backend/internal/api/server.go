@@ -4,17 +4,26 @@ import (
 	"maps/backend/internal/api/pages"
 	"maps/backend/internal/api/routes"
 	"maps/backend/internal/engine"
+	"maps/backend/internal/osm"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func StartApi(engine engine.Engine) {
-	router := gin.Default()
-	router.Use(gin.Logger())
+	go func() {
+		osm.EnsureLoaded()
+		osm.EnsureIndoorLoaded()
+	}()
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
 	router.Use(cors.Default())
 
 	pages.Register(router, engine)
+
+	router.Static("/images", "./data/images")
+	router.Static("/data/images", "./data/images")
 
 	api := router.Group("/api")
 	{

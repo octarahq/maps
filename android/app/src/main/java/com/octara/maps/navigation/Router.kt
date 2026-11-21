@@ -16,6 +16,7 @@ import com.octara.maps.ui.screens.map.StopInfoSheetContent
 import com.octara.maps.ui.screens.map.TransitMapSheetContent
 import com.octara.maps.ui.screens.planner.JourneyPlannerSheetContent
 import com.octara.maps.ui.screens.search.SearchScreen
+import com.octara.maps.ui.screens.navigation.TransitNavigationScreen
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.theme.AppDimensions
 import org.maplibre.android.geometry.LatLng
@@ -67,6 +68,7 @@ sealed interface Screen {
         ) {
             val router = LocalRouter.current
             TransitMapSheetContent(
+                sheetState = sheetState,
                 onSearchClick = { router.navigateTo(Search) }
             )
         }
@@ -107,24 +109,29 @@ sealed interface Screen {
             onClose: () -> Unit,
             onUpdateTarget: (LatLng, String?) -> Unit
         ) {
+            val router = LocalRouter.current
             StopInfoSheetContent(
                 stopId = stopId,
                 sheetState = sheetState,
                 onClose = onClose,
                 onStopLoaded = { stopLat, stopLon, stopName ->
                     onUpdateTarget(LatLng(stopLat, stopLon), stopName)
+                },
+                onStopDetailsLoaded = { layerStop ->
+                    router.selectedStopDetails = layerStop
                 }
             )
         }
     }
 
     data class JourneyPlanner(
-        val toStopId: String,
+        val toStopId: String = "",
         val toStopName: String,
+        val toLat: Double? = null,
+        val toLon: Double? = null,
     ) : Screen {
         override val isDismissible: Boolean = true
         override val showBackButton: Boolean = true
-
 
         override val initialSheetValue: SheetValue
             get() = SheetValue.Expanded
@@ -142,8 +149,24 @@ sealed interface Screen {
             JourneyPlannerSheetContent(
                 toStopId = toStopId,
                 toStopName = toStopName,
+                toLat = toLat,
+                toLon = toLon,
                 sheetState = sheetState,
                 onClose = onClose
+            )
+        }
+    }
+
+    data class Navigation(
+        val trip: com.octara.maps.types.ParsedTrip
+    ) : Screen {
+        override val isOverlay: Boolean = true
+
+        @Composable
+        override fun OverlayContent(onBack: () -> Unit) {
+            TransitNavigationScreen(
+                trip = trip,
+                onBack = onBack
             )
         }
     }
@@ -159,6 +182,8 @@ class Router(initialScreen: Screen = Screen.Map) {
         private set
 
     var activeJourney by mutableStateOf<com.octara.maps.types.ParsedTrip?>(null)
+
+    var selectedStopDetails by mutableStateOf<com.octara.maps.types.LayerStop?>(null)
 
     private val backStack = mutableListOf(initialScreen)
 
@@ -177,6 +202,9 @@ class Router(initialScreen: Screen = Screen.Map) {
                 if (screen !is Screen.JourneyPlanner) {
                     activeJourney = null
                 }
+                if (screen !is Screen.StopInfo) {
+                    selectedStopDetails = null
+                }
             }
         }
     }
@@ -188,6 +216,9 @@ class Router(initialScreen: Screen = Screen.Map) {
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
             if (activeMapScreen !is Screen.JourneyPlanner) {
                 activeJourney = null
+            }
+            if (activeMapScreen !is Screen.StopInfo) {
+                selectedStopDetails = null
             }
             return true
         }
@@ -202,6 +233,7 @@ class Router(initialScreen: Screen = Screen.Map) {
             currentScreen = root
             activeMapScreen = backStack.findLast { !it.isOverlay } ?: Screen.Map
             activeJourney = null
+            selectedStopDetails = null
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.octara.maps.navigation.LocalRouter
@@ -62,6 +64,7 @@ import com.octara.maps.types.Stop
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.RouteTypeIcon
+import com.octara.maps.ui.components.bottomSheetContentScroll
 import com.octara.maps.ui.theme.AppDimensions
 import com.octara.maps.utils.Api
 import com.octara.maps.navigation.Screen
@@ -241,27 +244,106 @@ private fun RouteDepartureCard(
                             modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = if (!dep.headsign.isNullOrBlank()) dep.headsign else "Direction inconnue",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
+                        ) {
+                            Text(
+                                text = if (!dep.headsign.isNullOrBlank()) dep.headsign else "Direction inconnue",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val metaItems = mutableListOf<@Composable () -> Unit>()
+                            if (!dep.platform.isNullOrBlank()) {
+                                metaItems.add {
+                                    Text(
+                                        text = "Quai ${dep.platform}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (dep.is_long_train != null) {
+                                metaItems.add {
+                                    Text(
+                                        text = if (dep.is_long_train) "Train long" else "Train court",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (metaItems.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    metaItems.forEachIndexed { idx, item ->
+                                        if (idx > 0) {
+                                            Text(
+                                                text = "•",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        item()
+                                    }
+                                }
+                            }
+                            val delayed = dep.is_delayed || dep.delay_sec >= 60
+                            if (delayed) {
+                                val delayMins =
+                                    if (dep.delay_minutes > 0) dep.delay_minutes else ((dep.delay_sec + 30) / 60).coerceAtLeast(
+                                        1
+                                    )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "En retard (+$delayMins min)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFD84315)
+                                    )
+                                    if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
+                                        Text(
+                                            text = dep.time_string,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD84315)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         val waitText = formatDepartureTime(dep)
                         val isImminent = dep.wait_minutes <= 1.0f
+                        val isDelayed = dep.is_delayed || dep.delay_sec >= 60
+                        val badgeBgColor = when {
+                            isDelayed -> Color(0xFFFFF3E0)
+                            isImminent -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        }
+                        val badgeTextColor = when {
+                            isDelayed -> Color(0xFFD84315)
+                            isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (isImminent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            color = badgeBgColor,
                             modifier = Modifier.padding(start = 4.dp)
                         ) {
                             Text(
                                 text = waitText,
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isImminent) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isImminent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (isImminent || isDelayed) FontWeight.Bold else FontWeight.SemiBold,
+                                color = badgeTextColor,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -279,7 +361,8 @@ fun StopInfoSheetContent(
     modifier: Modifier = Modifier,
     sheetState: SheetState? = null,
     onClose: (() -> Unit)? = null,
-    onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null
+    onStopLoaded: ((lat: Double, lon: Double, name: String) -> Unit)? = null,
+    onStopDetailsLoaded: ((com.octara.maps.types.LayerStop) -> Unit)? = null
 ) {
     val router = LocalRouter.current
     val favoritesManager = com.octara.maps.managers.FavoritesStopsManager()
@@ -323,6 +406,34 @@ fun StopInfoSheetContent(
 
         val allDepartures = response?.departures.orEmpty()
         val allRoutes = response?.routes.orEmpty()
+
+        if (response != null && response.stop.lat != 0f && response.stop.lon != 0f) {
+            val stopRoutes = allRoutes.map { r ->
+                com.octara.maps.types.LayerStopRoute(
+                    name = r.short_name.ifBlank { r.name },
+                    picto = r.picto ?: "",
+                    color = r.color ?: "",
+                    type = r.type
+                )
+            }
+            val inferredStopType = when {
+                allRoutes.any { it.type == RouteType.TRAIN } -> com.octara.maps.types.StopType.RAIL
+                allRoutes.any { it.type == RouteType.METRO } -> com.octara.maps.types.StopType.METRO
+                allRoutes.any { it.type == RouteType.TRAM } -> com.octara.maps.types.StopType.STREET_TRAM
+                allRoutes.any { it.type == RouteType.CABLE_TRAM || it.type == RouteType.AERIAL_LIFT } -> com.octara.maps.types.StopType.LIFT
+                else -> com.octara.maps.types.StopType.STREET_BUS
+            }
+            onStopDetailsLoaded?.invoke(
+                com.octara.maps.types.LayerStop(
+                    id = response.stop.id,
+                    name = response.stop.name,
+                    type = inferredStopType,
+                    lat = response.stop.lat.toDouble(),
+                    lon = response.stop.lon.toDouble(),
+                    routes = stopRoutes
+                )
+            )
+        }
 
         val departuresByRoute = allDepartures.groupBy { dep ->
             dep.route_id?.removePrefix("IDFM:") ?: ""
@@ -380,11 +491,18 @@ fun StopInfoSheetContent(
             )
     }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .bottomSheetContentScroll(
+                scrollState = scrollState,
+                sheetState = sheetState
+            )
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .navigationBarsPadding()
     ) {
         val info = stopInfo
         if (info == null && isLoading) {
@@ -574,4 +692,3 @@ fun StopInfoSheetContent(
         }
     }
 }
-

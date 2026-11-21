@@ -48,35 +48,35 @@ type Pathway struct {
 	PathwayID          string  `csv:"pathway_id"`
 	FromStopID         string  `csv:"from_stop_id"`
 	ToStopID           string  `csv:"to_stop_id"`
-	Mode               uint8   `csv:"pathway_mode"`
-	IsBidirectional    uint8   `csv:"is_bidirectional"`
-	Length             float64 `csv:"length"`
-	TraversalTime      uint32  `csv:"traversal_time"`
-	StairCount         int32   `csv:"stair_count"`
-	MaxSlope           float64 `csv:"max_slope"`
-	MinWidth           float64 `csv:"min_width"`
 	SignpostedAs       string  `csv:"signposted_as"`
 	ReversedSignposted string  `csv:"reversed_signposted_as"`
+	Length             float64 `csv:"length"`
+	MaxSlope           float64 `csv:"max_slope"`
+	MinWidth           float64 `csv:"min_width"`
+	TraversalTime      uint32  `csv:"traversal_time"`
+	StairCount         int32   `csv:"stair_count"`
+	Mode               uint8   `csv:"pathway_mode"`
+	IsBidirectional    uint8   `csv:"is_bidirectional"`
 }
 
 type Attribution struct {
 	AttributionID    string `csv:"attribution_id"`
 	RouteID          string `csv:"route_id"`
 	TripID           string `csv:"trip_id"`
-	IsOperator       uint8  `csv:"is_operator"`
 	OrganizationName string `csv:"organization_name"`
 	URL              string `csv:"attribution_url"`
 	Email            string `csv:"attribution_email"`
 	Phone            string `csv:"attribution_phone"`
+	IsOperator       uint8  `csv:"is_operator"`
 }
 
 type BookingRule struct {
 	BookingRuleID string `csv:"booking_rule_id"`
-	BookingType   uint8  `csv:"booking_type"`
 	Message       string `csv:"message"`
 	PhoneNumber   string `csv:"phone_number"`
 	InfoURL       string `csv:"info_url"`
 	BookingURL    string `csv:"booking_url"`
+	BookingType   uint8  `csv:"booking_type"`
 }
 
 type ObjectCodeExtension struct {

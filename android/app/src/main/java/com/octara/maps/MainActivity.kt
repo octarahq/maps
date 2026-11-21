@@ -32,10 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.octara.maps.navigation.LocalRouter
+import com.octara.maps.managers.ActiveNavigationManager
 import com.octara.maps.managers.FavoritesStopsManager
+import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
 import com.octara.maps.ui.screens.map.TransitMapScreen
 import com.octara.maps.utils.LocationHelper
+import com.octara.maps.utils.LocationManager
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 
@@ -73,10 +76,6 @@ class MainActivity : ComponentActivity() {
 fun MapsApp() {
     val router = rememberRouter()
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val locationHelper = remember { LocationHelper(context) }
-
-    var userCoords by remember { mutableStateOf(Pair(48.8566f, 2.3522f)) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -85,23 +84,17 @@ fun MapsApp() {
                       permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
         if (granted) {
-            coroutineScope.launch {
-                locationHelper.getCurrentLocation()?.let { userCoords = it }
-            }
+            LocationManager.startLocationUpdates(context)
         }
     }
 
     LaunchedEffect(Unit) {
-        val hasFine = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasCoarse = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (hasFine || hasCoarse) {
-            locationHelper.getCurrentLocation()?.let { userCoords = it }
+        val savedNav = ActiveNavigationManager.loadActiveNavigationIfStillValid(context)
+        if (savedNav != null && router.currentScreen !is Screen.Navigation) {
+            router.navigateTo(Screen.Navigation(trip = savedNav))
+        }
+        if (LocationManager.hasLocationPermission(context)) {
+            LocationManager.startLocationUpdates(context)
         } else {
             permissionLauncher.launch(
                 arrayOf(

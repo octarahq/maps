@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/csv"
 	"encoding/gob"
 	"fmt"
@@ -11,8 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"maps/backend/internal/types"
 	"maps/backend/internal/utils"
@@ -49,6 +51,12 @@ var DataUrls = []struct {
 		Url:      "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/referentiel-des-lignes/exports/csv",
 		FileType: "csv",
 	},
+	{
+		Name:     "ile-de-france-latest.osm.pbf",
+		Url:      "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf",
+		FileType: "pbf",
+		Path:     "data/osm/ile-de-france-latest.osm.pbf",
+	},
 }
 
 func RunFetchData() {
@@ -68,26 +76,52 @@ func main() {
 				fmt.Println("skip missing data")
 				continue
 			}
-			fmt.Println(d.Name)
-			res := fetchData(d.Url)
 			var path string = fmt.Sprintf("data/raw/%s", d.Name)
 			if d.Path != "" {
 				path = d.Path
 			}
 
+			if d.FileType == "pbf" {
+				if info, err := os.Stat(path); err == nil && info.Size() > 0 && time.Since(info.ModTime()) < 7*24*time.Hour {
+					fmt.Printf("skip %s (already present, age %s < 7d)\n", d.Name, time.Since(info.ModTime()).Round(time.Minute))
+					continue
+				}
+			}
+
+			fmt.Println(d.Name)
+			res := fetchData(d.Url)
+
+			var err error
 			switch d.FileType {
 			case "zip":
-				fmt.Print(saveAndExtractZip(res, "data/raw"))
+				err = saveAndExtractZip(res, "data/raw")
 			default:
-				fmt.Print(saveData(res, path))
+				err = saveData(res, path)
+			}
+			if rc, ok := res.(io.Closer); ok {
+				_ = rc.Close()
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error fetching %s: %v\n", d.Name, err)
+				os.Exit(1)
 			}
 		}
 	}
 
 	fmt.Println("network.bin")
-	saveFile(buildNetWork("data/raw"), "data/processed/network.bin")
+	if err := saveFile(buildNetWork("data/raw"), "data/processed/network.bin"); err != nil {
+		fmt.Fprintf(os.Stderr, "error building network.bin: %v\n", err)
+		os.Exit(1)
+	}
+	runtime.GC()
+	debug.FreeOSMemory()
 	fmt.Println("extra.bin")
-	saveFile(buildExtraData("data/raw"), "data/processed/extra.bin")
+	if err := saveFile(buildExtraData("data/raw"), "data/processed/extra.bin"); err != nil {
+		fmt.Fprintf(os.Stderr, "error building extra.bin: %v\n", err)
+		os.Exit(1)
+	}
+	runtime.GC()
+	debug.FreeOSMemory()
 }
 
 func buildNetWork(path string) io.Reader {
@@ -130,6 +164,7 @@ func buildNetWork(path string) io.Reader {
 			}
 			linesFile.Close()
 		}
+		utils.EnrichRoutesWithVehicles(routes)
 
 		tripsFile, err := readFile(fmt.Sprintf("%s/trips.txt", path))
 		if err != nil {
@@ -202,6 +237,7 @@ func buildNetWork(path string) io.Reader {
 		}
 
 		utils.EnrichParentsStations(&net)
+		utils.EnrichTripsHeadsignWithTerminus(&net)
 
 		enc := gob.NewEncoder(pw)
 		if err := enc.Encode(net); err != nil {
@@ -477,14 +513,22 @@ func saveData(data io.Reader, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	file, err := os.Create(path)
+	tmpPath := path + ".tmp"
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	_, err = io.Copy(file, data)
-	return err
+	if _, err = io.Copy(file, data); err != nil {
+		file.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func saveFile(data io.Reader, path string) error {
@@ -492,12 +536,27 @@ func saveFile(data io.Reader, path string) error {
 }
 
 func saveAndExtractZip(data io.Reader, path string) error {
-	archive, err := io.ReadAll(data)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return err
+	}
+	tmpFile, err := os.CreateTemp(path, "octara-gtfs-*.zip")
 	if err != nil {
 		return err
 	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	defer tmpFile.Close()
 
-	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	size, err := io.Copy(tmpFile, data)
+	if err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	reader, err := zip.NewReader(tmpFile, size)
 	if err != nil {
 		return err
 	}
