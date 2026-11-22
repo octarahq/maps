@@ -96,7 +96,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -189,6 +188,9 @@ fun JourneyPlannerSheetContent(
     val initialWheelchair = remember { prefs.getBoolean("preferred_wheelchair", false) }
     val initialWithBike = remember { prefs.getBoolean("preferred_with_bike", false) }
 
+    val parisTimeZone = remember { java.util.TimeZone.getTimeZone("Europe/Paris") }
+    val parisZoneId = remember { java.time.ZoneId.of("Europe/Paris") }
+
     var journeyConfig by remember {
         mutableStateOf(
             JourneyQuery(
@@ -198,7 +200,7 @@ fun JourneyPlannerSheetContent(
                 } else {
                     Position.ByStop(toStopId)
                 },
-                time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
+                time = LocalDateTime.now(parisZoneId).format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
                 timeType = TimeType.DEPARTURE,
                 allowedModes = if (selectedAllowedModes.size == allRouteModes.size) null else selectedAllowedModes.toList(),
                 withBike = initialWithBike,
@@ -258,12 +260,12 @@ fun JourneyPlannerSheetContent(
     var currentToStopName by remember { mutableStateOf(toStopName) }
     var activePickerTarget by remember { mutableStateOf<String?>(null) }
 
-    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance(parisTimeZone)) }
     var isMenuExpanded by remember { mutableStateOf(false) }
     var showSettingsModal by remember { mutableStateOf(false) }
 
     fun formatDisplayDateTime(cal: Calendar): String {
-        val now = Calendar.getInstance()
+        val now = Calendar.getInstance(parisTimeZone)
         val isToday = now.get(Calendar.YEAR) == cal.get(Calendar.YEAR) &&
                 now.get(Calendar.DAY_OF_YEAR) == cal.get(Calendar.DAY_OF_YEAR)
         val isTomorrow = now.get(Calendar.YEAR) == cal.get(Calendar.YEAR) &&
@@ -284,7 +286,7 @@ fun JourneyPlannerSheetContent(
                 val timePicker = TimePickerDialog(
                     context,
                     { _, hourOfDay, minute ->
-                        val chosen = Calendar.getInstance().apply {
+                        val chosen = Calendar.getInstance(parisTimeZone).apply {
                             set(Calendar.YEAR, year)
                             set(Calendar.MONTH, month)
                             set(Calendar.DAY_OF_MONTH, dayOfMonth)
@@ -292,10 +294,12 @@ fun JourneyPlannerSheetContent(
                             set(Calendar.MINUTE, minute)
                             set(Calendar.SECOND, 0)
                         }
-                        val now = Calendar.getInstance()
+                        val now = Calendar.getInstance(parisTimeZone)
                         val finalCal = if (chosen.before(now)) now else chosen
                         selectedCalendar = finalCal
-                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).apply {
+                            timeZone = parisTimeZone
+                        }
                         journeyConfig = journeyConfig.copy(time = isoFormat.format(finalCal.time))
                     },
                     selectedCalendar.get(Calendar.HOUR_OF_DAY),
@@ -377,22 +381,16 @@ fun JourneyPlannerSheetContent(
         val fromText = if (fromIsCurrentLocation) {
             if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
         } else currentFromStopName
-        val fromColor = if (fromIsCurrentLocation) {
-            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
-        } else Color(0xFF34C759)
 
         val toIsCurrentLocation = journeyConfig.to is Position.CurrentLocation
         val toText = if (toIsCurrentLocation) {
             if (gpsLocation != null) "Ma position" else "Ma position (introuvable)"
         } else currentToStopName
-        val toColor = if (toIsCurrentLocation) {
-            if (gpsLocation != null) Color(0xFF007AFF) else MaterialTheme.colorScheme.error
-        } else Color(0xFF34C759)
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFFE8E8ED)
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Box(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -413,7 +411,7 @@ fun JourneyPlannerSheetContent(
                     ) {
                         Text(
                             text = fromText,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -426,7 +424,7 @@ fun JourneyPlannerSheetContent(
                             .fillMaxWidth()
                             .padding(end = 40.dp),
                         thickness = 1.dp,
-                        color = Color(0xFFE0E0E0)
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -440,7 +438,7 @@ fun JourneyPlannerSheetContent(
                     ) {
                         Text(
                             text = toText,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -452,7 +450,7 @@ fun JourneyPlannerSheetContent(
 
                 Surface(
                     shape = RoundedCornerShape(percent = 50),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 2.dp,
                     modifier = Modifier
                         .width(48.dp)
@@ -475,7 +473,7 @@ fun JourneyPlannerSheetContent(
                         Icon(
                             imageVector = Icons.Default.SwapVert,
                             contentDescription = "Inverser",
-                            tint = Color(0xFF555555),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -496,7 +494,7 @@ fun JourneyPlannerSheetContent(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { isMenuExpanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFE8E8ED)
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Box(
                     modifier = Modifier
@@ -509,7 +507,7 @@ fun JourneyPlannerSheetContent(
                     ) {
                         Text(
                             text = if (journeyConfig.timeType == TimeType.DEPARTURE) "Départ à" else "Arrivée à",
-                            color = Color(0xFF555555),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
@@ -517,7 +515,7 @@ fun JourneyPlannerSheetContent(
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = null,
-                            tint = Color(0xFF555555),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -551,7 +549,7 @@ fun JourneyPlannerSheetContent(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { openDateTimePicker() },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFE8E8ED)
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Row(
                     modifier = Modifier
@@ -562,14 +560,14 @@ fun JourneyPlannerSheetContent(
                 ) {
                     Text(
                         text = formatDisplayDateTime(selectedCalendar),
-                        color = Color(0xFF555555),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Icon(
                         imageVector = Icons.Default.AccessTime,
                         contentDescription = "Choisir l'heure",
-                        tint = Color(0xFF555555),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -582,7 +580,7 @@ fun JourneyPlannerSheetContent(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { showSettingsModal = true },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFE8E8ED)
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -591,7 +589,7 @@ fun JourneyPlannerSheetContent(
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "Options",
-                        tint = Color(0xFF555555),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -608,7 +606,7 @@ fun JourneyPlannerSheetContent(
                         .fillMaxWidth(0.9f)
                         .clip(RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 8.dp
                 ) {
                     Column(
@@ -620,7 +618,7 @@ fun JourneyPlannerSheetContent(
                             text = "Paramètres divers",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E1E1E)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
 
                         Row(
@@ -634,20 +632,14 @@ fun JourneyPlannerSheetContent(
                                 text = "Accessibilité fauteuil roulant",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF1E1E1E)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             androidx.compose.material3.Switch(
                                 checked = journeyConfig.wheelchair,
                                 onCheckedChange = { isChecked ->
                                     journeyConfig = journeyConfig.copy(wheelchair = isChecked)
                                     prefs.edit().putBoolean("preferred_wheelchair", isChecked).apply()
-                                },
-                                colors = androidx.compose.material3.SwitchDefaults.colors(
-                                    checkedThumbColor = Color(0xFF007AFF),
-                                    uncheckedThumbColor = Color(0xFFBDBDBD),
-                                    checkedTrackColor = Color(0xFFB3D7FF),
-                                    uncheckedTrackColor = Color(0xFFE0E0E0)
-                                )
+                                }
                             )
                         }
 
@@ -662,33 +654,27 @@ fun JourneyPlannerSheetContent(
                                 text = "Départ avec vélo",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF1E1E1E)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             androidx.compose.material3.Switch(
                                 checked = journeyConfig.withBike,
                                 onCheckedChange = { isChecked ->
                                     journeyConfig = journeyConfig.copy(withBike = isChecked)
                                     prefs.edit().putBoolean("preferred_with_bike", isChecked).apply()
-                                },
-                                colors = androidx.compose.material3.SwitchDefaults.colors(
-                                    checkedThumbColor = Color(0xFF007AFF),
-                                    uncheckedThumbColor = Color(0xFFBDBDBD),
-                                    checkedTrackColor = Color(0xFFB3D7FF),
-                                    uncheckedTrackColor = Color(0xFFE0E0E0)
-                                )
+                                }
                             )
                         }
 
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 18.dp),
-                            color = Color(0xFFEBEBEB)
+                            color = MaterialTheme.colorScheme.outlineVariant
                         )
 
                         Text(
                             text = "Modes de transport autorisés",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E1E1E),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
 
@@ -735,10 +721,10 @@ fun JourneyPlannerSheetContent(
                                                     )
                                                 },
                                             shape = RoundedCornerShape(12.dp),
-                                            color = if (isSelected) Color(0xFFEBF3FF) else Color(0xFFF3F3F5),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
                                             border = if (isSelected) androidx.compose.foundation.BorderStroke(
                                                 1.dp,
-                                                Color(0xFF007AFF)
+                                                MaterialTheme.colorScheme.primary
                                             ) else null
                                         ) {
                                             Row(
@@ -756,14 +742,14 @@ fun JourneyPlannerSheetContent(
                                                     Icon(
                                                         imageVector = info.second,
                                                         contentDescription = null,
-                                                        tint = if (isSelected) Color(0xFF007AFF) else Color(0xFF666666),
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         modifier = Modifier.size(20.dp)
                                                     )
                                                     Text(
                                                         text = info.first,
                                                         fontSize = 14.sp,
                                                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                                        color = if (isSelected) Color(0xFF007AFF) else Color(0xFF444444),
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         maxLines = 1,
                                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                     )
@@ -772,7 +758,7 @@ fun JourneyPlannerSheetContent(
                                                     Icon(
                                                         imageVector = Icons.Default.Check,
                                                         contentDescription = "Sélectionné",
-                                                        tint = Color(0xFF007AFF),
+                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                         modifier = Modifier.size(16.dp)
                                                     )
                                                 }
@@ -788,7 +774,7 @@ fun JourneyPlannerSheetContent(
         }
 
         var selectedMode by remember {
-            mutableStateOf(prefs.getString("preferred_route_mode", "comfort") ?: "comfort")
+            mutableStateOf(prefs.getString("preferred_route_mode", "fastest") ?: "fastest")
         }
 
         data class RouteModeOption(
@@ -799,8 +785,8 @@ fun JourneyPlannerSheetContent(
 
         val routeModes = remember {
             listOf(
-                RouteModeOption("comfort", "Confort", Icons.Default.Weekend),
                 RouteModeOption("fastest", "Rapide", Icons.Default.FlashOn),
+                RouteModeOption("comfort", "Confort", Icons.Default.Weekend),
                 RouteModeOption("least_walk", "Moins de marche", Icons.AutoMirrored.Filled.DirectionsWalk),
                 RouteModeOption("nearest_station", "Proche", Icons.Default.NearMe)
             )
@@ -831,7 +817,7 @@ fun JourneyPlannerSheetContent(
                             prefs.edit().putString("preferred_route_mode", mode.key).apply()
                         },
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color(0xFFE8E8ED)
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
                     Row(
                         modifier = Modifier
@@ -854,7 +840,7 @@ fun JourneyPlannerSheetContent(
                                 imageVector = mode.icon,
                                 contentDescription = mode.label,
                                 modifier = Modifier.size(16.dp),
-                                tint = Color(0xFF555555)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (timeLabel.isNotEmpty()) {
                                 Spacer(modifier = Modifier.width(3.dp))
@@ -862,7 +848,7 @@ fun JourneyPlannerSheetContent(
                                     text = timeLabel,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF555555),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1
                                 )
                             }
@@ -877,11 +863,11 @@ fun JourneyPlannerSheetContent(
                 .fillMaxWidth()
                 .padding(top = 10.dp),
             thickness = 1.dp,
-            color = Color(0xFFE0E0E0)
+            color = MaterialTheme.colorScheme.outlineVariant
         )
 
         val journey =
-            journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
+            journeys.journeys[selectedMode] ?: journeys.journeys["fastest"] ?: journeys.journeys.values.firstOrNull()
 
         LaunchedEffect(journey) {
             router.activeJourney = journey

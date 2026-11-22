@@ -78,6 +78,8 @@ import com.octara.maps.types.Route
 import com.octara.maps.types.RouteType
 import com.octara.maps.types.TrainPosition
 import com.octara.maps.types.TripLeg
+import com.octara.maps.ui.theme.AppTheme
+import com.octara.maps.ui.theme.ensureContrastForTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -153,8 +155,11 @@ private fun LegNavigationState?.contentAlpha(): Float = when (this) {
     LegNavigationState.UPCOMING, LegNavigationState.ACTIVE, null -> 1f
 }
 
-private fun Color.forNavigationState(state: LegNavigationState?): Color = when (state) {
-    LegNavigationState.PAST -> lerp(this, Color(0xFF9E9E9E), 0.45f)
+private fun Color.forNavigationState(
+    state: LegNavigationState?,
+    pastBlendTarget: Color
+): Color = when (state) {
+    LegNavigationState.PAST -> lerp(this, pastBlendTarget, 0.45f)
     LegNavigationState.UPCOMING, LegNavigationState.ACTIVE, null -> this
 }
 
@@ -316,8 +321,12 @@ fun TransfertLegItem(
     nextLeg: TripLeg? = null,
     resyncKey: Int = 0
 ) {
-    val baseColor = if (navigationState == LegNavigationState.ACTIVE) Color(0xFF1E88E5) else Color(0xFF757575)
-    val tColor = baseColor.forNavigationState(navigationState)
+    val baseColor = if (navigationState == LegNavigationState.ACTIVE) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val tColor = baseColor.forNavigationState(navigationState, AppTheme.colors.pastBlendTarget)
     val guide = rememberIndoorTransferGuide(
         leg = leg,
         prevLeg = prevLeg,
@@ -412,8 +421,12 @@ fun WalkingLegItem(
     isFirstWalk: Boolean = false,
     resyncKey: Int = 0
 ) {
-    val baseColor = if (navigationState == LegNavigationState.ACTIVE) Color(0xFF1E88E5) else Color(0xFF757575)
-    val tColor = baseColor.forNavigationState(navigationState)
+    val baseColor = if (navigationState == LegNavigationState.ACTIVE) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val tColor = baseColor.forNavigationState(navigationState, AppTheme.colors.pastBlendTarget)
     val isInsideStationWalk = !isFirstWalk && prevLeg != null && nextLeg != null
     val guide = rememberIndoorTransferGuide(
         leg = leg,
@@ -638,8 +651,12 @@ fun BikingLegItem(
     leg: TripLeg,
     navigationState: LegNavigationState? = null
 ) {
-    val baseColor = if (navigationState == LegNavigationState.ACTIVE) Color(0xFF1E88E5) else Color(0xFF757575)
-    val tColor = baseColor.forNavigationState(navigationState)
+    val baseColor = if (navigationState == LegNavigationState.ACTIVE) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val tColor = baseColor.forNavigationState(navigationState, AppTheme.colors.pastBlendTarget)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -696,7 +713,9 @@ fun TransitLegItem(
     val rgb = route?.color?.removePrefix("#")?.toLongOrNull(16)?.toInt()
         ?: 0x0071BD
     val rawColor = Color(rgb or 0xFF000000.toInt())
-    val tColor = rawColor.forNavigationState(navigationState)
+    val tColor = rawColor.forNavigationState(navigationState, AppTheme.colors.pastBlendTarget)
+    val labelColor = tColor.ensureContrastForTheme(AppTheme.colors.isDark)
+    val blockedCrossColor = AppTheme.colors.blockedCross
 
     val intermediateStops = leg.intermediateStops ?: emptyList()
 
@@ -882,7 +901,7 @@ fun TransitLegItem(
                     text = leg.fromStopName,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Medium,
-                    color = headerBarColor,
+                    color = labelColor,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 val timeStr = formatTimeString(leg.departureTime)
@@ -900,14 +919,14 @@ fun TransitLegItem(
                                 text = schedDepStr,
                                 fontSize = 13.sp,
                                 style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
-                                color = Color(0xFF888888)
+                                color = MaterialTheme.colorScheme.outline
                             )
                         }
                         Text(
                             text = timeStr,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDepDelayed) Color(0xFFD84315) else Color(0xFF555555)
+                            color = if (isDepDelayed) AppTheme.colors.delayedText else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -944,7 +963,7 @@ fun TransitLegItem(
                         text = leg.headsign ?: route.longName,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Normal,
-                        color = headerBarColor
+                        color = labelColor
                     )
                 }
             }
@@ -975,13 +994,13 @@ fun TransitLegItem(
                     if (!leg.departurePlatform.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = tColor.copy(alpha = 0.15f)
+                            color = labelColor.copy(alpha = 0.15f)
                         ) {
                             Text(
                                 text = "Quai ${leg.departurePlatform}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = tColor,
+                                color = labelColor,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -1112,7 +1131,7 @@ fun TransitLegItem(
                         },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Normal,
-                        color = tColor
+                        color = labelColor
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -1238,7 +1257,7 @@ fun TransitLegItem(
                         },
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = tColor,
+                        color = labelColor,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1246,7 +1265,7 @@ fun TransitLegItem(
                         imageVector = if (isIntermediateExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = tColor
+                        tint = labelColor
                     )
                 }
             }
@@ -1368,7 +1387,7 @@ fun TransitLegItem(
 
                                 val crossCenter = Offset(barW / 2f, centerY)
                                 val crossRadius = 7.dp.toPx()
-                                val crossColor = Color(0xFFE53935)
+                                val crossColor = blockedCrossColor
                                 val crossStroke = 3.5.dp.toPx()
 
                                 drawLine(
@@ -1403,8 +1422,8 @@ fun TransitLegItem(
                         }
 
                         val stopTextColor = when {
-                            isBlocked -> tColor.copy(alpha = 0.65f)
-                            else -> tColor
+                            isBlocked -> labelColor.copy(alpha = 0.65f)
+                            else -> labelColor
                         }
                         Row(
                             modifier = Modifier
@@ -1440,7 +1459,7 @@ fun TransitLegItem(
                                             text = schedStopStr,
                                             fontSize = 12.sp,
                                             style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
-                                            color = Color(0xFF999999)
+                                            color = MaterialTheme.colorScheme.outline
                                         )
                                     }
                                     val rawStopTime = stop.arrivalTime.ifBlank { stop.departureTime }
@@ -1458,9 +1477,9 @@ fun TransitLegItem(
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = when {
-                                            isStopDelayed -> Color(0xFFD84315)
-                                            isStopEarly -> Color(0xFF2E7D32)
-                                            else -> Color(0xFF666666)
+                                            isStopDelayed -> AppTheme.colors.delayedText
+                                            isStopEarly -> AppTheme.colors.earlyText
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
                                     )
                                 }
@@ -1577,7 +1596,7 @@ fun TransitLegItem(
                         text = leg.toStopName,
                         fontSize = 20.sp,
                         fontWeight = if (isAlightingSoon) FontWeight.Bold else FontWeight.Medium,
-                        color = tColor
+                        color = labelColor
                     )
                     val arrRef = arrivalPlatformInfo?.ref?.takeIf { it.isNotBlank() }
                         ?: leg.arrivalPlatform?.takeIf { it.isNotBlank() }
@@ -1594,13 +1613,13 @@ fun TransitLegItem(
                             if (arrRef != null) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = tColor.copy(alpha = 0.15f)
+                                    color = labelColor.copy(alpha = 0.15f)
                                 ) {
                                     Text(
                                         text = "Quai $arrRef",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = tColor,
+                                        color = labelColor,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -1638,7 +1657,7 @@ fun TransitLegItem(
                                 text = schedArrStr,
                                 fontSize = 13.sp,
                                 style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.LineThrough),
-                                color = Color(0xFF888888)
+                                color = MaterialTheme.colorScheme.outline
                             )
                         }
                         val arrivalPos = intermediateStops.size + 1
@@ -1656,9 +1675,9 @@ fun TransitLegItem(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = when {
-                                isArrDelayed -> Color(0xFFD84315)
-                                isArrEarly -> Color(0xFF2E7D32)
-                                else -> Color(0xFF555555)
+                                isArrDelayed -> AppTheme.colors.delayedText
+                                isArrEarly -> AppTheme.colors.earlyText
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                         )
                     }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -384,6 +385,9 @@ fun TransitMap(
                 val newLayerIds = mutableListOf<String>()
                 val newSourceIds = mutableListOf<String>()
                 val allPoints = mutableListOf<LatLng>()
+                val pendingCasingLayers = mutableListOf<LineLayer>()
+                val pendingDashedLayers = mutableListOf<LineLayer>()
+                val pendingFillLayers = mutableListOf<LineLayer>()
 
                 activeJourney?.legs?.forEachIndexed { index, leg ->
                     val coords = leg.coordinates
@@ -401,6 +405,7 @@ fun TransitMap(
                         if (points.size >= 2) {
                             val lineString = LineString.fromLngLats(points)
                             val sourceId = "journey-source-$index"
+                            val casingLayerId = "journey-casing-$index"
                             val layerId = "journey-layer-$index"
 
                             try {
@@ -429,43 +434,72 @@ fun TransitMap(
                                     if (isDashed) AndroidColor.GRAY else AndroidColor.parseColor("#0071BD")
                                 }
 
-                                val layer = LineLayer(layerId, sourceId).apply {
-                                    val dynamicLineWidth = if (isDashed) {
-                                        interpolate(
-                                            exponential(1.5f),
-                                            zoom(),
-                                            stop(10f, 1.8f),
-                                            stop(13f, 3.0f),
-                                            stop(16f, 4.5f)
-                                        )
-                                    } else {
-                                        interpolate(
-                                            exponential(1.5f),
-                                            zoom(),
-                                            stop(9f, 2.5f),
-                                            stop(12f, 4.5f),
-                                            stop(15f, 7.5f),
-                                            stop(18f, 10.0f)
-                                        )
-                                    }
-
-                                    setProperties(
-                                        PropertyFactory.lineColor(parsedColor),
-                                        PropertyFactory.lineWidth(dynamicLineWidth),
-                                        PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-                                        PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+                                if (isDashed) {
+                                    val dynamicDashWidth = interpolate(
+                                        exponential(1.5f),
+                                        zoom(),
+                                        stop(10f, 1.8f),
+                                        stop(13f, 3.0f),
+                                        stop(16f, 4.5f)
                                     )
-                                    if (isDashed) {
+                                    val dashLayer = LineLayer(layerId, sourceId).apply {
                                         setProperties(
+                                            PropertyFactory.lineColor(parsedColor),
+                                            PropertyFactory.lineWidth(dynamicDashWidth),
+                                            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                                            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
                                             PropertyFactory.lineDasharray(arrayOf(1.8f, 1.8f))
                                         )
                                     }
+                                    pendingDashedLayers.add(dashLayer)
+                                } else {
+                                    val casingWidth = interpolate(
+                                        exponential(1.5f),
+                                        zoom(),
+                                        stop(9f, 6.5f),
+                                        stop(12f, 10.0f),
+                                        stop(15f, 14.0f),
+                                        stop(18f, 18.0f)
+                                    )
+                                    val casingLayer = LineLayer(casingLayerId, sourceId).apply {
+                                        setProperties(
+                                            PropertyFactory.lineColor(AndroidColor.WHITE),
+                                            PropertyFactory.lineWidth(casingWidth),
+                                            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                                            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+                                        )
+                                    }
+                                    pendingCasingLayers.add(casingLayer)
+
+                                    val fillWidth = interpolate(
+                                        exponential(1.5f),
+                                        zoom(),
+                                        stop(9f, 3.5f),
+                                        stop(12f, 6.0f),
+                                        stop(15f, 9.0f),
+                                        stop(18f, 12.0f)
+                                    )
+                                    val fillLayer = LineLayer(layerId, sourceId).apply {
+                                        setProperties(
+                                            PropertyFactory.lineColor(parsedColor),
+                                            PropertyFactory.lineWidth(fillWidth),
+                                            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                                            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+                                        )
+                                    }
+                                    pendingFillLayers.add(fillLayer)
                                 }
-                                style.addLayer(layer)
-                                newLayerIds.add(layerId)
                             } catch (_: Exception) {
                             }
                         }
+                    }
+                }
+
+                (pendingCasingLayers + pendingDashedLayers + pendingFillLayers).forEach { layer ->
+                    try {
+                        style.addLayer(layer)
+                        newLayerIds.add(layer.id)
+                    } catch (_: Exception) {
                     }
                 }
 
@@ -487,13 +521,238 @@ fun TransitMap(
         }
     }
 
-    LaunchedEffect(mapInstance, isMapReady, currentScreen) {
+    val latestScreen by rememberUpdatedState(currentScreen)
+    val fetchJobRef = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    val syncRoutesLayerForScreen: (MapLibreMap, Screen) -> Boolean = { map, screen ->
+        val showRoutesLines = screen is Screen.Map || screen is Screen.StopInfo
+        val style = map.style
+        if (style != null) {
+            style.getLayer(ROUTES_LINES_LAYER_ID)?.setProperties(
+                PropertyFactory.visibility(if (showRoutesLines) Property.VISIBLE else Property.NONE)
+            )
+            if (!showRoutesLines) {
+                (style.getSource(ROUTES_LINES_SOURCE_ID) as? GeoJsonSource)?.setGeoJson(
+                    FeatureCollection.fromFeatures(arrayOf())
+                )
+            }
+        }
+        if (!showRoutesLines) {
+            fetchJobRef.value?.cancel()
+            fetchJobRef.value = null
+            visibleStops = emptyList()
+        }
+        showRoutesLines
+    }
+
+    val refreshVisibleOverlay: (MapLibreMap) -> Unit = refresh@{ map ->
+        cameraMoveTick++
+        val screen = latestScreen
+        val showRoutesLines = syncRoutesLayerForScreen(map, screen)
+        val rawZoom = map.cameraPosition.zoom
+
+        if (!showRoutesLines || rawZoom < 8.0) {
+            visibleStops = emptyList()
+            fetchJobRef.value?.cancel()
+            fetchJobRef.value = null
+            val style = map.style
+            if (style != null) {
+                (style.getSource(ROUTES_LINES_SOURCE_ID) as? GeoJsonSource)?.setGeoJson(
+                    FeatureCollection.fromFeatures(arrayOf())
+                )
+            }
+            return@refresh
+        }
+
+        val showLayerStops = screen is Screen.Map
+        val proj = map.projection
+        val visibleRegion = try {
+            proj.visibleRegion
+        } catch (_: Exception) {
+            null
+        }
+
+        val bounds = visibleRegion?.latLngBounds ?: return@refresh
+        val linesZoom = rawZoom.roundToInt().coerceIn(9, 15)
+        val showStops = showLayerStops && rawZoom >= 11.5
+        val stopsZoom = when {
+            rawZoom < 12.6 -> 10
+            rawZoom < 13.6 -> 12
+            rawZoom < 14.5 -> 14
+            rawZoom < 15.5 -> 16
+            else -> 17
+        }
+
+        val lineTiles = getVisibleTiles(bounds, linesZoom, maxTiles = 6)
+        val stopTiles = if (showStops) {
+            getVisibleTiles(bounds, stopsZoom, maxTiles = 12)
+        } else {
+            emptyList()
+        }
+
+        val minLat = bounds.latitudeSouth
+        val maxLat = bounds.latitudeNorth
+        val minLon = bounds.longitudeWest
+        val maxLon = bounds.longitudeEast
+
+        fetchJobRef.value?.cancel()
+        fetchJobRef.value = CoroutineScope(Dispatchers.IO).launch {
+            val collectedLines = mutableListOf<LayerRouteLine>()
+            val seenSegmentKeys = mutableSetOf<String>()
+
+            lineTiles.forEach { (tx, ty) ->
+                val key = "$tx/$ty/$linesZoom"
+                val lines = routesLinesCache[key] ?: try {
+                    val res = api.getLayerRoutesLines(tx, ty, linesZoom)
+                    routesLinesCache[key] = res.lines
+                    res.lines
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                lines.forEach { l ->
+                    val pts = l.points
+                    if (pts.size >= 2) {
+                        val first = pts.first()
+                        val mid = pts[pts.size / 2]
+                        val last = pts.last()
+                        val segKey =
+                            "${l.routeId}:${pts.size}:${first.getOrNull(0)},${first.getOrNull(1)}:${
+                                mid.getOrNull(0)
+                            },${mid.getOrNull(1)}:${last.getOrNull(0)},${last.getOrNull(1)}"
+                        if (seenSegmentKeys.add(segKey)) {
+                            collectedLines.add(l)
+                        }
+                    }
+                }
+            }
+
+            val latMargin = maxOf(0.05, (maxLat - minLat) * 0.5)
+            val lonMargin = maxOf(0.05, (maxLon - minLon) * 0.5)
+            val clipMinLat = minLat - latMargin
+            val clipMaxLat = maxLat + latMargin
+            val clipMinLon = minLon - lonMargin
+            val clipMaxLon = maxLon + lonMargin
+
+            val lineFeatures = mutableListOf<Feature>()
+            collectedLines.forEach { line ->
+                val rawPts = line.points
+                if (rawPts.size >= 2) {
+                    val clippedSegments = clipPointsToBounds(
+                        rawPts = rawPts,
+                        minLat = clipMinLat,
+                        maxLat = clipMaxLat,
+                        minLon = clipMinLon,
+                        maxLon = clipMaxLon
+                    )
+                    val hexColor = if (line.color.startsWith("#")) line.color else "#${line.color}"
+                    clippedSegments.forEach { segPts ->
+                        if (segPts.size >= 2) {
+                            val feat = Feature.fromGeometry(LineString.fromLngLats(segPts))
+                            feat.addStringProperty("color", hexColor)
+                            feat.addStringProperty("route_id", line.routeId)
+                            lineFeatures.add(feat)
+                        }
+                    }
+                }
+            }
+
+            val collectedStops = mutableListOf<LayerStop>()
+            val seenStopIds = mutableSetOf<String>()
+            stopTiles.forEach { (tx, ty) ->
+                val key = "$tx/$ty/$stopsZoom"
+                val stops = stopsCache[key] ?: try {
+                    val res = api.getLayerStops(tx, ty, stopsZoom)
+                    stopsCache[key] = res.stops
+                    res.stops
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                stops.forEach { st ->
+                    val stopKey = "${st.id}:${st.type.value}:${st.name}"
+                    if (seenStopIds.add(stopKey)) {
+                        collectedStops.add(st)
+                    }
+                }
+            }
+
+            val stopPadLat = (maxLat - minLat) * 0.1
+            val stopPadLon = (maxLon - minLon) * 0.1
+            val inBoundsStops = collectedStops
+                .filter { st ->
+                    st.lat in (minLat - stopPadLat)..(maxLat + stopPadLat) &&
+                            st.lon in (minLon - stopPadLon)..(maxLon + stopPadLon)
+                }
+                .sortedWith(
+                    compareByDescending<LayerStop> { stopPriority(it.type) }
+                        .thenByDescending { it.routes.size }
+                        .thenBy { it.name }
+                )
+
+            withContext(Dispatchers.Main) {
+                val activeScreen = latestScreen
+                val stillShowRoutesLines = activeScreen is Screen.Map || activeScreen is Screen.StopInfo
+                val style = map.style
+                if (!stillShowRoutesLines) {
+                    syncRoutesLayerForScreen(map, activeScreen)
+                    return@withContext
+                }
+                if (style != null) {
+                    (style.getSource(ROUTES_LINES_SOURCE_ID) as? GeoJsonSource)?.setGeoJson(
+                        FeatureCollection.fromFeatures(lineFeatures)
+                    )
+                }
+
+                val stillShowStops = activeScreen is Screen.Map && showStops
+                if (!stillShowStops) {
+                    visibleStops = emptyList()
+                    cameraMoveTick++
+                    return@withContext
+                }
+
+                val densityVal = context.resources.displayMetrics.density
+                val (minDxDp, minDyDp, maxVisibleStops) = when {
+                    rawZoom < 12.6 -> Triple(160f, 64f, 8)
+                    rawZoom < 13.6 -> Triple(135f, 50f, 14)
+                    rawZoom < 14.5 -> Triple(110f, 42f, 22)
+                    else -> Triple(92f, 34f, 40)
+                }
+                val minDxPx = minDxDp * densityVal
+                val minDyPx = minDyDp * densityVal
+
+                val acceptedStops = mutableListOf<LayerStop>()
+                val acceptedScreenPts = mutableListOf<android.graphics.PointF>()
+
+                for (st in inBoundsStops) {
+                    val screenPt = try {
+                        map.projection.toScreenLocation(LatLng(st.lat, st.lon))
+                    } catch (_: Exception) {
+                        null
+                    } ?: continue
+
+                    val overlaps = acceptedScreenPts.any { existing ->
+                        abs(screenPt.x - existing.x) < minDxPx &&
+                                abs(screenPt.y - existing.y) < minDyPx
+                    }
+                    if (!overlaps) {
+                        acceptedStops.add(st)
+                        acceptedScreenPts.add(screenPt)
+                        if (acceptedStops.size >= maxVisibleStops) break
+                    }
+                }
+
+                visibleStops = acceptedStops
+                cameraMoveTick++
+            }
+        }
+    }
+
+    DisposableEffect(mapInstance, isMapReady) {
         val map = mapInstance
         if (map != null && isMapReady) {
-            var fetchJob: kotlinx.coroutines.Job? = null
-
             val mapClickListener = MapLibreMap.OnMapClickListener { latLng ->
-                if (currentScreen is Screen.Map && visibleStops.isNotEmpty()) {
+                if (latestScreen is Screen.Map && visibleStops.isNotEmpty()) {
                     val clickScreenPt = try {
                         map.projection.toScreenLocation(latLng)
                     } catch (_: Exception) {
@@ -530,213 +789,34 @@ fun TransitMap(
                 }
                 false
             }
-            map.addOnMapClickListener(mapClickListener)
-
             val cameraMoveListener = MapLibreMap.OnCameraMoveListener {
                 cameraMoveTick++
             }
-            map.addOnCameraMoveListener(cameraMoveListener)
-
             val cameraIdleListener = MapLibreMap.OnCameraIdleListener {
-                cameraMoveTick++
-                val camPos = map.cameraPosition
-                val rawZoom = camPos.zoom
-
-                val showRoutesLines = currentScreen is Screen.Map || currentScreen is Screen.StopInfo
-                val showLayerStops = currentScreen is Screen.Map
-
-                if (!showRoutesLines || rawZoom < 8.0) {
-                    visibleStops = emptyList()
-                    val style = map.style
-                    if (style != null) {
-                        (style.getSource(ROUTES_LINES_SOURCE_ID) as? GeoJsonSource)?.setGeoJson(
-                            FeatureCollection.fromFeatures(arrayOf())
-                        )
-                    }
-                    if (!showRoutesLines) return@OnCameraIdleListener
-                    if (rawZoom < 8.0) return@OnCameraIdleListener
-                }
-
-                val proj = map.projection
-                val visibleRegion = try {
-                    proj.visibleRegion
-                } catch (_: Exception) {
-                    null
-                }
-
-                val bounds = visibleRegion?.latLngBounds
-                if (bounds != null) {
-                    val linesZoom = rawZoom.roundToInt().coerceIn(9, 15)
-                    val showStops = showLayerStops && rawZoom >= 11.5
-                    val stopsZoom = when {
-                        rawZoom < 12.6 -> 10
-                        rawZoom < 13.6 -> 12
-                        rawZoom < 14.5 -> 14
-                        rawZoom < 15.5 -> 16
-                        else -> 17
-                    }
-
-                    val lineTiles = getVisibleTiles(bounds, linesZoom, maxTiles = 6)
-                    val stopTiles = if (showStops) {
-                        getVisibleTiles(bounds, stopsZoom, maxTiles = 12)
-                    } else {
-                        emptyList()
-                    }
-
-                    val minLat = bounds.latitudeSouth
-                    val maxLat = bounds.latitudeNorth
-                    val minLon = bounds.longitudeWest
-                    val maxLon = bounds.longitudeEast
-
-                    fetchJob?.cancel()
-                    fetchJob = CoroutineScope(Dispatchers.IO).launch {
-                        val collectedLines = mutableListOf<LayerRouteLine>()
-                        val seenSegmentKeys = mutableSetOf<String>()
-
-                        lineTiles.forEach { (tx, ty) ->
-                            val key = "$tx/$ty/$linesZoom"
-                            val lines = routesLinesCache[key] ?: try {
-                                val res = api.getLayerRoutesLines(tx, ty, linesZoom)
-                                routesLinesCache[key] = res.lines
-                                res.lines
-                            } catch (_: Exception) {
-                                emptyList()
-                            }
-
-                            lines.forEach { l ->
-                                val pts = l.points
-                                if (pts.size >= 2) {
-                                    val first = pts.first()
-                                    val mid = pts[pts.size / 2]
-                                    val last = pts.last()
-                                    val segKey =
-                                        "${l.routeId}:${pts.size}:${first.getOrNull(0)},${first.getOrNull(1)}:${
-                                            mid.getOrNull(0)
-                                        },${mid.getOrNull(1)}:${last.getOrNull(0)},${last.getOrNull(1)}"
-                                    if (seenSegmentKeys.add(segKey)) {
-                                        collectedLines.add(l)
-                                    }
-                                }
-                            }
-                        }
-
-                        val latMargin = maxOf(0.05, (maxLat - minLat) * 0.5)
-                        val lonMargin = maxOf(0.05, (maxLon - minLon) * 0.5)
-                        val clipMinLat = minLat - latMargin
-                        val clipMaxLat = maxLat + latMargin
-                        val clipMinLon = minLon - lonMargin
-                        val clipMaxLon = maxLon + lonMargin
-
-                        val lineFeatures = mutableListOf<Feature>()
-                        collectedLines.forEach { line ->
-                            val rawPts = line.points
-                            if (rawPts.size >= 2) {
-                                val clippedSegments = clipPointsToBounds(
-                                    rawPts = rawPts,
-                                    minLat = clipMinLat,
-                                    maxLat = clipMaxLat,
-                                    minLon = clipMinLon,
-                                    maxLon = clipMaxLon
-                                )
-                                val hexColor = if (line.color.startsWith("#")) line.color else "#${line.color}"
-                                clippedSegments.forEach { segPts ->
-                                    if (segPts.size >= 2) {
-                                        val feat = Feature.fromGeometry(LineString.fromLngLats(segPts))
-                                        feat.addStringProperty("color", hexColor)
-                                        feat.addStringProperty("route_id", line.routeId)
-                                        lineFeatures.add(feat)
-                                    }
-                                }
-                            }
-                        }
-
-                        val collectedStops = mutableListOf<LayerStop>()
-                        val seenStopIds = mutableSetOf<String>()
-                        stopTiles.forEach { (tx, ty) ->
-                            val key = "$tx/$ty/$stopsZoom"
-                            val stops = stopsCache[key] ?: try {
-                                val res = api.getLayerStops(tx, ty, stopsZoom)
-                                stopsCache[key] = res.stops
-                                res.stops
-                            } catch (_: Exception) {
-                                emptyList()
-                            }
-
-                            stops.forEach { st ->
-                                val stopKey = "${st.id}:${st.type.value}:${st.name}"
-                                if (seenStopIds.add(stopKey)) {
-                                    collectedStops.add(st)
-                                }
-                            }
-                        }
-
-                        val stopPadLat = (maxLat - minLat) * 0.1
-                        val stopPadLon = (maxLon - minLon) * 0.1
-                        val inBoundsStops = collectedStops
-                            .filter { st ->
-                                st.lat in (minLat - stopPadLat)..(maxLat + stopPadLat) &&
-                                        st.lon in (minLon - stopPadLon)..(maxLon + stopPadLon)
-                            }
-                            .sortedWith(
-                                compareByDescending<LayerStop> { stopPriority(it.type) }
-                                    .thenByDescending { it.routes.size }
-                                    .thenBy { it.name }
-                            )
-
-                        withContext(Dispatchers.Main) {
-                            val style = map.style
-                            if (style != null) {
-                                (style.getSource(ROUTES_LINES_SOURCE_ID) as? GeoJsonSource)?.setGeoJson(
-                                    FeatureCollection.fromFeatures(lineFeatures)
-                                )
-                            }
-
-                            if (!showStops) {
-                                visibleStops = emptyList()
-                                cameraMoveTick++
-                                return@withContext
-                            }
-
-                            val densityVal = context.resources.displayMetrics.density
-                            val (minDxDp, minDyDp, maxVisibleStops) = when {
-                                rawZoom < 12.6 -> Triple(160f, 64f, 8)
-                                rawZoom < 13.6 -> Triple(135f, 50f, 14)
-                                rawZoom < 14.5 -> Triple(110f, 42f, 22)
-                                else -> Triple(92f, 34f, 40)
-                            }
-                            val minDxPx = minDxDp * densityVal
-                            val minDyPx = minDyDp * densityVal
-
-                            val acceptedStops = mutableListOf<LayerStop>()
-                            val acceptedScreenPts = mutableListOf<android.graphics.PointF>()
-
-                            for (st in inBoundsStops) {
-                                val screenPt = try {
-                                    map.projection.toScreenLocation(LatLng(st.lat, st.lon))
-                                } catch (_: Exception) {
-                                    null
-                                } ?: continue
-
-                                val overlaps = acceptedScreenPts.any { existing ->
-                                    abs(screenPt.x - existing.x) < minDxPx &&
-                                            abs(screenPt.y - existing.y) < minDyPx
-                                }
-                                if (!overlaps) {
-                                    acceptedStops.add(st)
-                                    acceptedScreenPts.add(screenPt)
-                                    if (acceptedStops.size >= maxVisibleStops) break
-                                }
-                            }
-
-                            visibleStops = acceptedStops
-                            cameraMoveTick++
-                        }
-                    }
-                }
+                refreshVisibleOverlay(map)
             }
 
+            map.addOnMapClickListener(mapClickListener)
+            map.addOnCameraMoveListener(cameraMoveListener)
             map.addOnCameraIdleListener(cameraIdleListener)
-            cameraIdleListener.onCameraIdle()
+            refreshVisibleOverlay(map)
+
+            onDispose {
+                fetchJobRef.value?.cancel()
+                fetchJobRef.value = null
+                map.removeOnMapClickListener(mapClickListener)
+                map.removeOnCameraMoveListener(cameraMoveListener)
+                map.removeOnCameraIdleListener(cameraIdleListener)
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
+    LaunchedEffect(currentScreen, mapInstance, isMapReady) {
+        val map = mapInstance
+        if (map != null && isMapReady) {
+            refreshVisibleOverlay(map)
         }
     }
 

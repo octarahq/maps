@@ -51,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +65,7 @@ import com.octara.maps.ui.components.RouteIcon
 import com.octara.maps.ui.components.RouteTypeIcon
 import com.octara.maps.ui.components.bottomSheetContentScroll
 import com.octara.maps.ui.theme.AppDimensions
+import com.octara.maps.ui.theme.AppTheme
 import com.octara.maps.utils.Api
 import com.octara.maps.navigation.Screen
 import kotlinx.coroutines.delay
@@ -308,14 +308,14 @@ private fun RouteDepartureCard(
                                         text = "En retard (+$delayMins min)",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFD84315)
+                                        color = AppTheme.colors.delayedText
                                     )
                                     if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
                                         Text(
                                             text = dep.time_string,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFD84315)
+                                            color = AppTheme.colors.delayedText
                                         )
                                     }
                                 }
@@ -325,12 +325,12 @@ private fun RouteDepartureCard(
                         val isImminent = dep.wait_minutes <= 1.0f
                         val isDelayed = dep.is_delayed || dep.delay_sec >= 60
                         val badgeBgColor = when {
-                            isDelayed -> Color(0xFFFFF3E0)
+                            isDelayed -> AppTheme.colors.delayedContainer
                             isImminent -> MaterialTheme.colorScheme.primaryContainer
                             else -> MaterialTheme.colorScheme.surfaceVariant
                         }
                         val badgeTextColor = when {
-                            isDelayed -> Color(0xFFD84315)
+                            isDelayed -> AppTheme.colors.delayedText
                             isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
                             else -> MaterialTheme.colorScheme.onSurface
                         }
@@ -591,7 +591,7 @@ fun StopInfoSheetContent(
                 shape = RoundedCornerShape(12.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             ) {
                 Row(

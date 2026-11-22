@@ -35,7 +35,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 				Wait      float64
 				Transfers int
 			}{
-				Walk:      1.8,
+				Walk:      2.5,
 				Wait:      1.3,
 				Transfers: 1200,
 			},
@@ -250,7 +250,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithDepartureTime(lonFrom, latFrom, l
 	}
 
 	disallowedRoutes := make(map[string]bool)
-	if len(config.AllowedModes) > 0 && len(config.AllowedModes) < 4 {
+	if len(config.AllowedModes) > 0 && len(config.AllowedModes) < 8 {
 		for _, r := range e.Net.Routes {
 			if !utils.CheckAllowedRouteType(r.RType, config.AllowedModes) {
 				disallowedRoutes[r.RID] = true
@@ -1139,7 +1139,7 @@ func (e *Engine) CalculateRouteCordsToCordsWithArrivalTime(lonFrom, latFrom, lon
 	}
 
 	disallowedRoutes := make(map[string]bool)
-	if len(config.AllowedModes) > 0 && len(config.AllowedModes) < 4 {
+	if len(config.AllowedModes) > 0 && len(config.AllowedModes) < 8 {
 		for _, r := range e.Net.Routes {
 			if !utils.CheckAllowedRouteType(r.RType, config.AllowedModes) {
 				disallowedRoutes[r.RID] = true

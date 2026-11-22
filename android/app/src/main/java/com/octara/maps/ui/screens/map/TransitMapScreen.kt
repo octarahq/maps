@@ -60,6 +60,8 @@ import com.octara.maps.ui.components.AppSearchBar
 import com.octara.maps.ui.components.InteractiveSheetDragHandle
 import com.octara.maps.ui.components.bottomSheetContentScroll
 import com.octara.maps.ui.theme.AppDimensions
+import com.octara.maps.ui.theme.AppTheme
+import com.octara.maps.ui.theme.ensureContrastForTheme
 import org.maplibre.android.geometry.LatLng
 import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.managers.FavoriteStop
@@ -195,6 +197,7 @@ fun FavoritesStopsNextDepartures(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
+                    val isDarkTheme = AppTheme.colors.isDark
                     Text(
                         text = favoriteStop.stopName,
                         style = MaterialTheme.typography.titleMedium,
@@ -203,6 +206,7 @@ fun FavoritesStopsNextDepartures(
                             try {
                                 val clean = favoriteStop.routeColor.trim().removePrefix("#")
                                 Color((0xFF000000L or clean.toLong(16)).toInt())
+                                    .ensureContrastForTheme(isDarkTheme)
                             } catch (_: Exception) {
                                 MaterialTheme.colorScheme.onSurface
                             }
@@ -267,14 +271,14 @@ fun FavoritesStopsNextDepartures(
                                     text = "En retard (+$delayMins min)",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFD84315)
+                                    color = AppTheme.colors.delayedText
                                 )
                                 if (!dep.scheduled_time_string.isNullOrBlank() && !dep.time_string.isNullOrBlank() && dep.scheduled_time_string != dep.time_string) {
                                     Text(
                                         text = dep.time_string,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFD84315)
+                                        color = AppTheme.colors.delayedText
                                     )
                                 }
                             }
@@ -284,12 +288,12 @@ fun FavoritesStopsNextDepartures(
                     val isImminent = (dep.wait_sec.toFloat() / 60.0f) <= 1.0f
                     val isDelayed = dep.is_delayed || dep.delay_sec >= 60
                     val badgeBgColor = when {
-                        isDelayed -> Color(0xFFFFF3E0)
+                        isDelayed -> AppTheme.colors.delayedContainer
                         isImminent -> MaterialTheme.colorScheme.primaryContainer
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     }
                     val badgeTextColor = when {
-                        isDelayed -> Color(0xFFD84315)
+                        isDelayed -> AppTheme.colors.delayedText
                         isImminent -> MaterialTheme.colorScheme.onPrimaryContainer
                         else -> MaterialTheme.colorScheme.onSurface
                     }
