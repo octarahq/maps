@@ -54,7 +54,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -72,6 +71,7 @@ import com.octara.maps.types.ParsedTrip
 import com.octara.maps.types.RouteType
 import com.octara.maps.ui.components.JourneyLegItem
 import com.octara.maps.ui.components.LegNavigationState
+import com.octara.maps.ui.theme.AppTheme
 import com.octara.maps.utils.Api
 import com.octara.maps.utils.LocationManager
 import kotlinx.coroutines.delay
@@ -379,7 +379,7 @@ fun TransitNavigationScreen(
 
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = Color.White
+        color = MaterialTheme.colorScheme.background
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -473,7 +473,7 @@ fun TransitNavigationScreen(
                         AnimatedVisibility(visible = !isNetworkOnline || !progress.gpsSynced) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFF8E1),
+                                color = AppTheme.colors.warningContainer,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
@@ -486,7 +486,7 @@ fun TransitNavigationScreen(
                                     Icon(
                                         imageVector = Icons.Default.WifiOff,
                                         contentDescription = null,
-                                        tint = Color(0xFFEF6C00),
+                                        tint = AppTheme.colors.warningIcon,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     val statusText = when {
@@ -498,7 +498,7 @@ fun TransitNavigationScreen(
                                         text = statusText,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFE65100)
+                                        color = AppTheme.colors.warningText
                                     )
                                 }
                             }
@@ -507,7 +507,7 @@ fun TransitNavigationScreen(
                         AnimatedVisibility(visible = progress.isAlightingSoon) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFF3E0),
+                                color = AppTheme.colors.alertContainer,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
@@ -520,7 +520,7 @@ fun TransitNavigationScreen(
                                     Icon(
                                         imageVector = Icons.Default.NotificationsActive,
                                         contentDescription = null,
-                                        tint = Color(0xFFE65100),
+                                        tint = AppTheme.colors.alertContent,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     val stops = progress.stopsRemaining ?: 1
@@ -532,7 +532,7 @@ fun TransitNavigationScreen(
                                         },
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE65100)
+                                        color = AppTheme.colors.alertContent
                                     )
                                 }
                             }

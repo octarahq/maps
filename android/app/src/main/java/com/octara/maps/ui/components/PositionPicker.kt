@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -139,13 +138,13 @@ fun PositionPicker(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (hasGps) Color(0xFFEBF3FF) else MaterialTheme.colorScheme.surfaceVariant),
+                                .background(if (hasGps) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MyLocation,
                                 contentDescription = "Ma position",
-                                tint = if (hasGps) Color(0xFF007AFF) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (hasGps) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -154,12 +153,12 @@ fun PositionPicker(
                                 text = "Ma position",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (hasGps) Color(0xFF007AFF) else MaterialTheme.colorScheme.onSurface
+                                color = if (hasGps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = if (hasGps) "Position GPS actuelle" else "Position GPS non disponible",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (hasGps) Color(0xFF888888) else MaterialTheme.colorScheme.error
+                                color = if (hasGps) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -167,7 +166,7 @@ fun PositionPicker(
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 8.dp),
                         thickness = 0.5.dp,
-                        color = Color(0xFFE0E0E0)
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
                 }
 

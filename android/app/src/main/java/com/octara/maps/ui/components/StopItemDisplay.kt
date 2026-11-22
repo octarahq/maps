@@ -160,7 +160,7 @@ fun StopItemDisplay(
                     if (withBG) {
                         Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color.White)
+                            .background(MaterialTheme.colorScheme.surface)
                             .padding(2.dp)
                     } else {
                         Modifier

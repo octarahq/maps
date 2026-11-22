@@ -18,7 +18,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -37,6 +36,7 @@ import com.octara.maps.managers.FavoritesStopsManager
 import com.octara.maps.navigation.Screen
 import com.octara.maps.navigation.rememberRouter
 import com.octara.maps.ui.screens.map.TransitMapScreen
+import com.octara.maps.ui.theme.OctaraMapsTheme
 import com.octara.maps.utils.LocationHelper
 import com.octara.maps.utils.LocationManager
 import kotlinx.coroutines.launch
@@ -45,11 +45,11 @@ import org.maplibre.android.MapLibre
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.light(
+            statusBarStyle = SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT
             ),
-            navigationBarStyle = SystemBarStyle.light(
+            navigationBarStyle = SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT
             )
@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
         FavoritesStopsManager.initialize(applicationContext)
 
         setContent {
-            MaterialTheme {
+            OctaraMapsTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MapsApp()
                 }
