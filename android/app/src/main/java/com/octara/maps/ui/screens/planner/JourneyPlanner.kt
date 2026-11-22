@@ -188,6 +188,9 @@ fun JourneyPlannerSheetContent(
     val initialWheelchair = remember { prefs.getBoolean("preferred_wheelchair", false) }
     val initialWithBike = remember { prefs.getBoolean("preferred_with_bike", false) }
 
+    val parisTimeZone = remember { java.util.TimeZone.getTimeZone("Europe/Paris") }
+    val parisZoneId = remember { java.time.ZoneId.of("Europe/Paris") }
+
     var journeyConfig by remember {
         mutableStateOf(
             JourneyQuery(
@@ -197,7 +200,7 @@ fun JourneyPlannerSheetContent(
                 } else {
                     Position.ByStop(toStopId)
                 },
-                time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
+                time = LocalDateTime.now(parisZoneId).format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")),
                 timeType = TimeType.DEPARTURE,
                 allowedModes = if (selectedAllowedModes.size == allRouteModes.size) null else selectedAllowedModes.toList(),
                 withBike = initialWithBike,
@@ -257,12 +260,12 @@ fun JourneyPlannerSheetContent(
     var currentToStopName by remember { mutableStateOf(toStopName) }
     var activePickerTarget by remember { mutableStateOf<String?>(null) }
 
-    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance(parisTimeZone)) }
     var isMenuExpanded by remember { mutableStateOf(false) }
     var showSettingsModal by remember { mutableStateOf(false) }
 
     fun formatDisplayDateTime(cal: Calendar): String {
-        val now = Calendar.getInstance()
+        val now = Calendar.getInstance(parisTimeZone)
         val isToday = now.get(Calendar.YEAR) == cal.get(Calendar.YEAR) &&
                 now.get(Calendar.DAY_OF_YEAR) == cal.get(Calendar.DAY_OF_YEAR)
         val isTomorrow = now.get(Calendar.YEAR) == cal.get(Calendar.YEAR) &&
@@ -283,7 +286,7 @@ fun JourneyPlannerSheetContent(
                 val timePicker = TimePickerDialog(
                     context,
                     { _, hourOfDay, minute ->
-                        val chosen = Calendar.getInstance().apply {
+                        val chosen = Calendar.getInstance(parisTimeZone).apply {
                             set(Calendar.YEAR, year)
                             set(Calendar.MONTH, month)
                             set(Calendar.DAY_OF_MONTH, dayOfMonth)
@@ -291,10 +294,12 @@ fun JourneyPlannerSheetContent(
                             set(Calendar.MINUTE, minute)
                             set(Calendar.SECOND, 0)
                         }
-                        val now = Calendar.getInstance()
+                        val now = Calendar.getInstance(parisTimeZone)
                         val finalCal = if (chosen.before(now)) now else chosen
                         selectedCalendar = finalCal
-                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).apply {
+                            timeZone = parisTimeZone
+                        }
                         journeyConfig = journeyConfig.copy(time = isoFormat.format(finalCal.time))
                     },
                     selectedCalendar.get(Calendar.HOUR_OF_DAY),
@@ -769,7 +774,7 @@ fun JourneyPlannerSheetContent(
         }
 
         var selectedMode by remember {
-            mutableStateOf(prefs.getString("preferred_route_mode", "comfort") ?: "comfort")
+            mutableStateOf(prefs.getString("preferred_route_mode", "fastest") ?: "fastest")
         }
 
         data class RouteModeOption(
@@ -780,8 +785,8 @@ fun JourneyPlannerSheetContent(
 
         val routeModes = remember {
             listOf(
-                RouteModeOption("comfort", "Confort", Icons.Default.Weekend),
                 RouteModeOption("fastest", "Rapide", Icons.Default.FlashOn),
+                RouteModeOption("comfort", "Confort", Icons.Default.Weekend),
                 RouteModeOption("least_walk", "Moins de marche", Icons.AutoMirrored.Filled.DirectionsWalk),
                 RouteModeOption("nearest_station", "Proche", Icons.Default.NearMe)
             )
@@ -862,7 +867,7 @@ fun JourneyPlannerSheetContent(
         )
 
         val journey =
-            journeys.journeys[selectedMode] ?: journeys.journeys["comfort"] ?: journeys.journeys.values.firstOrNull()
+            journeys.journeys[selectedMode] ?: journeys.journeys["fastest"] ?: journeys.journeys.values.firstOrNull()
 
         LaunchedEffect(journey) {
             router.activeJourney = journey
